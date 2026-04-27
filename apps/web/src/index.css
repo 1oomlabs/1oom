@@ -1,51 +1,96 @@
+/* Pretendard Variable - Korean editorial sans, open source */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");
+/* JetBrains Mono - addresses, code, hashes */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Surface */
+    --background: 60 14% 97%; /* warm off-white #FAFAF7 */
+    --surface: 60 14% 97%;
+    --surface-subtle: 60 14% 95%; /* #F5F5F0 */
+    --surface-elevated: 0 0% 100%; /* pure white */
+    --foreground: 240 13% 9%; /* deep ink #14141A */
+
+    /* Card */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 240 13% 9%;
+
+    /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
+    --popover-foreground: 240 13% 9%;
+
+    /* Primary = ink. Used for high-emphasis CTAs and headlines. */
+    --primary: 240 13% 9%;
+    --primary-foreground: 60 14% 97%;
+
+    /* Secondary = subtle surface fill */
+    --secondary: 60 14% 93%;
+    --secondary-foreground: 240 13% 9%;
+
+    /* Muted = quiet meta text & dividers */
+    --muted: 60 14% 95%;
+    --muted-foreground: 240 4% 43%;
+
+    /* Accent = the brand voice. Vermilion. */
+    --accent: 9 100% 59%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Semantic */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 13% 9%;
+
+    /* Lines */
+    --border: 60 15% 90%; /* #E8E8E2 */
+    --input: 60 15% 90%;
+    --ring: 9 100% 59%; /* matches accent */
+
+    --radius: 12px;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --background: 240 20% 5%; /* #0A0A0F */
+    --surface: 240 20% 5%;
+    --surface-subtle: 240 13% 9%; /* #14141A */
+    --surface-elevated: 240 13% 11%;
+    --foreground: 60 14% 95%; /* #F5F5F0 */
+
+    --card: 240 13% 9%;
+    --card-foreground: 60 14% 95%;
+
+    --popover: 240 13% 11%;
+    --popover-foreground: 60 14% 95%;
+
+    --primary: 60 14% 95%;
+    --primary-foreground: 240 20% 5%;
+
+    --secondary: 240 13% 14%;
+    --secondary-foreground: 60 14% 95%;
+
+    --muted: 240 13% 12%;
+    --muted-foreground: 240 5% 60%;
+
+    --accent: 10 100% 65%; /* lighter vermilion for dark mode */
+    --accent-foreground: 240 20% 5%;
+
+    --destructive: 0 65% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 60% 50%;
+    --success-foreground: 240 20% 5%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 240 20% 5%;
+
+    --border: 240 10% 18%; /* #2A2A33 */
+    --input: 240 10% 18%;
+    --ring: 10 100% 65%;
   }
 }
 
@@ -53,8 +98,79 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "ss06" 1, "cv11" 1, "tnum" 0;
+  }
+
+  /* Editorial type ramp */
+  h1 {
+    @apply font-display text-4xl font-bold tracking-tight md:text-5xl;
+  }
+  h2 {
+    @apply font-display text-3xl font-semibold tracking-tight md:text-4xl;
+  }
+  h3 {
+    @apply font-display text-xl font-semibold tracking-tight md:text-2xl;
+  }
+  h4 {
+    @apply text-lg font-semibold tracking-tight;
+  }
+  p {
+    @apply text-base leading-relaxed;
+  }
+
+  /* Numerals + addresses align */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .mono {
+    @apply font-mono;
+    font-feature-settings: "liga" 0;
+  }
+
+  /* Selection */
+  ::selection {
+    background: hsl(var(--accent) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  /* Focus ring for non-shadcn interactive elements */
+  :where(button, a, [role="button"]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius);
+  }
+}
+
+@layer utilities {
+  /* Text-balance helper for headings */
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Container reset wider for editorial layouts */
+  .container-wide {
+    max-width: 1280px;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+  @media (min-width: 1024px) {
+    .container-wide {
+      padding-inline: 2.5rem;
+    }
+  }
+  /* Hairline divider */
+  .hr-line {
+    height: 1px;
+    background: hsl(var(--border));
+  }
+  /* Marquee row mask */
+  .marquee-mask {
+    mask-image: linear-gradient(to right, transparent 0, black 10%, black 90%, transparent 100%);
   }
 }
