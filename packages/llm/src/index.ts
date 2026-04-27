@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { type Template, templateSchema } from '@loomlabs/schema';
 import { findTemplatesByKeyword, templates } from '@loomlabs/templates';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001'; //sonnet-4-6 우선 보류
 
 export type ExtractIntentInput = {
   prompt: string;
