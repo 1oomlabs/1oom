@@ -3,18 +3,16 @@ import { type UseMutationResult, useMutation } from '@tanstack/react-query';
 import { apiClient } from '../client';
 import type { ApiError } from '../errors';
 import type { MutationOpts } from '../hooks';
+import type { Intent } from './workflows';
 
-export interface ExtractIntentResult {
-  templateId: string;
-  confidence: number;
-  parameters: Record<string, unknown>;
-  reasoning?: string;
-}
+export type ExtractIntentResult = {
+  prompt: string;
+  intent: Intent;
+};
 
 /**
- * Non-CRUD endpoint - one-shot natural-language extraction. Bypasses
- * `Resource<T>` because there is no list/detail shape to model. Uses
- * `apiClient` directly which is the right pattern for action endpoints.
+ * Non-CRUD endpoint - one-shot natural-language extraction.
+ * Returns the prompt echoed back plus the extracted intent.
  */
 export function useExtractIntent(
   options?: MutationOpts<ExtractIntentResult, { prompt: string }>,

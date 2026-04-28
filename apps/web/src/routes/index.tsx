@@ -1,13 +1,22 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 
+import { useMarketplaceList } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { PromptInput } from '@/components/ui/prompt-input';
+import { WorkflowCardSkeleton } from '@/components/ui/skeleton';
 import { StatTile } from '@/components/ui/stat-tile';
 import { WorkflowCard } from '@/components/ui/workflow-card';
-import { marketplaceStats, mockWorkflows, promptExamples } from '@/lib/mock';
+import { listingToCard } from '@/lib/view-models';
+import { useDraftStore } from '@/store/draft-store';
+
+const promptExamples = [
+  'Every Friday, deposit 100 USDC into Aave',
+  'Buy 0.05 ETH each Monday with USDC on Uniswap',
+  'Stake 1 ETH into Lido and compound stETH monthly',
+];
 
 export const Route: AnyRoute = createFileRoute('/')({
   component: HomePage,
@@ -15,10 +24,33 @@ export const Route: AnyRoute = createFileRoute('/')({
 
 function HomePage() {
   const navigate = useNavigate();
+  const setPrompt = useDraftStore((s) => s.setPrompt);
+
+  const { data: listings, isLoading } = useMarketplaceList(
+    { sort: 'popular', limit: 6 },
+    { staleTime: 30_000 },
+  );
+
+  const featured = (listings ?? []).slice(0, 6);
+
+  // Derive marketplace stats from the listings we already fetched.
+  // Avoids a separate aggregation endpoint at backend.
+  const totalRuns = featured.reduce((sum, l) => sum + l.stats.runs, 0);
+  const totalInstalls = featured.reduce((sum, l) => sum + l.stats.installs, 0);
+  const stats = [
+    { label: 'Workflows', value: String(listings?.length ?? 0) },
+    { label: 'Featured', value: String(featured.length) },
+    { label: 'Total runs', value: totalRuns.toLocaleString() },
+    { label: 'Total installs', value: totalInstalls.toLocaleString() },
+  ];
+
+  const onPromptSubmit = (value: string) => {
+    setPrompt(value);
+    navigate({ to: '/workflows/new' });
+  };
 
   return (
     <div className="flex flex-col">
-      {/* Hero */}
       <section className="container-wide pt-20 pb-16 md:pt-32 md:pb-24">
         <div className="flex flex-col gap-8 md:max-w-4xl">
           <Eyebrow tone="accent">From a sentence to a workflow</Eyebrow>
@@ -32,11 +64,7 @@ function HomePage() {
             KeeperHub, and publish it to a marketplace where other agents can discover and remix it.
           </p>
 
-          <PromptInput
-            className="mt-4"
-            examples={promptExamples}
-            onSubmit={() => navigate({ to: '/workflows/new' })}
-          />
+          <PromptInput className="mt-4" examples={promptExamples} onSubmit={onPromptSubmit} />
 
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>Integrates with</span>
@@ -48,23 +76,14 @@ function HomePage() {
         </div>
       </section>
 
-      {/* Stats strip */}
       <section className="border-y border-border bg-surface-subtle">
         <div className="container-wide grid grid-cols-2 gap-px bg-border md:grid-cols-4">
-          {marketplaceStats.map((s) => (
-            <StatTile
-              key={s.label}
-              label={s.label}
-              value={s.value}
-              delta={s.delta}
-              hint={s.hint}
-              className="border-0 bg-card"
-            />
+          {stats.map((s) => (
+            <StatTile key={s.label} label={s.label} value={s.value} className="border-0 bg-card" />
           ))}
         </div>
       </section>
 
-      {/* Featured workflows */}
       <section className="container-wide py-24">
         <div className="mb-12 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
           <div className="flex flex-col gap-3">
@@ -82,14 +101,28 @@ function HomePage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-          {mockWorkflows.slice(0, 6).map((w) => (
-            <WorkflowCard key={w.id} data={w} className="rounded-none border-0" />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: skeletons have no stable id
+              <WorkflowCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : featured.length === 0 ? (
+          <EmptyMarketplace />
+        ) : (
+          <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
+            {featured.map((listing) => (
+              <WorkflowCard
+                key={listing.id}
+                data={listingToCard(listing)}
+                className="rounded-none border-0"
+              />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* How it works */}
       <section className="border-t border-border bg-surface-subtle">
         <div className="container-wide py-24">
           <div className="mb-16 flex flex-col gap-3">
@@ -126,6 +159,17 @@ function HomePage() {
           </ol>
         </div>
       </section>
+    </div>
+  );
+}
+
+function EmptyMarketplace() {
+  return (
+    <div className="flex flex-col items-center gap-4 border border-dashed border-border bg-surface-subtle py-20 text-center">
+      <p className="font-display text-2xl font-semibold tracking-tight">No workflows yet</p>
+      <p className="max-w-prose text-muted-foreground">
+        Be the first to publish. Describe an automation above and ship it in under a minute.
+      </p>
     </div>
   );
 }

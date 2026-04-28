@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 
 import { Button } from '@/components/ui/button';
+import { ConnectWalletButton } from '@/components/wallet/connect-wallet-button';
 import { cn } from '@/lib/utils';
 
 const navLinkClass = cn(
@@ -36,12 +37,10 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-            Sign in
+          <Button variant="ghost" size="sm" className="hidden sm:inline-flex" asChild>
+            <Link to="/workflows/new">New</Link>
           </Button>
-          <Button variant="accent" size="sm">
-            Connect wallet
-          </Button>
+          <ConnectWalletButton />
         </div>
       </div>
     </header>

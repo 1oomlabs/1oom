@@ -1,20 +1,13 @@
 import { type UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
 
+import type { CreateWorkflowRequest, Workflow } from '@loomlabs/schema';
+
 import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
 import { type MutationOpts, type ResourceHooks, makeResourceHooks } from '../hooks';
 import { Resource } from '../resource';
 
-export interface Workflow {
-  id: string;
-  name: string;
-  description?: string;
-  status: 'draft' | 'deployed' | 'paused' | 'completed' | 'error';
-  templateId: string;
-  chainId: number;
-  parameters: Record<string, unknown>;
-  createdAt: number;
-}
+export type { Workflow, CreateWorkflowRequest };
 
 export interface WorkflowListParams extends Record<string, string | number | boolean | undefined> {
   status?: Workflow['status'];
@@ -22,34 +15,80 @@ export interface WorkflowListParams extends Record<string, string | number | boo
   limit?: number;
 }
 
+export interface Intent {
+  templateId: string;
+  confidence: number;
+  parameters: Record<string, unknown>;
+  reasoning?: string;
+}
+
+export interface ExecuteResult {
+  executionId: string;
+  status: string;
+}
+
 /**
  * Domain extension of `Resource<Workflow>`.
  *
- * Adds workflow-specific operations on top of the standard CRUD methods.
- * Other resources follow the same pattern - extend Resource, expose typed
- * methods, and let `makeResourceHooks(...)` produce the generic hooks.
+ * Backend wraps responses in envelopes ({workflow}/{workflows}), so all CRUD
+ * methods are overridden to unwrap. Custom mutations (run/pause/resume/fork)
+ * follow the same pattern.
  */
 export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
+  override async list(params?: WorkflowListParams): Promise<Workflow[]> {
+    const res = await this.client.get<{ workflows: Workflow[] }>(this.path, { query: params });
+    return res.workflows;
+  }
+
+  override async get(id: string): Promise<Workflow> {
+    const res = await this.client.get<{ workflow: Workflow }>(
+      `${this.path}/${encodeURIComponent(id)}`,
+    );
+    return res.workflow;
+  }
+
+  /**
+   * The create endpoint compiles natural language into a workflow in one shot.
+   * Body must match `CreateWorkflowRequest` ({ prompt, owner, chainId }).
+   */
+  override async create(body: CreateWorkflowRequest | Record<string, unknown>): Promise<Workflow> {
+    const res = await this.client.post<{ workflow: Workflow; intent: Intent }>(this.path, body);
+    return res.workflow;
+  }
+
+  override async remove(id: string): Promise<void> {
+    await this.client.delete<{ deleted: true }>(`${this.path}/${encodeURIComponent(id)}`);
+  }
+
   /** Trigger an immediate run of a deployed workflow. */
-  run(id: string): Promise<{ ok: true; runId: string }> {
-    return this.client.post<{ ok: true; runId: string }>(
+  async run(id: string): Promise<{ workflow: Workflow; execution: ExecuteResult }> {
+    return this.client.post<{ workflow: Workflow; execution: ExecuteResult }>(
       `${this.path}/${encodeURIComponent(id)}/run`,
     );
   }
 
   /** Pause a deployed workflow without removing it. */
-  pause(id: string): Promise<Workflow> {
-    return this.client.post<Workflow>(`${this.path}/${encodeURIComponent(id)}/pause`);
+  async pause(id: string): Promise<Workflow> {
+    const res = await this.client.post<{ workflow: Workflow }>(
+      `${this.path}/${encodeURIComponent(id)}/pause`,
+    );
+    return res.workflow;
   }
 
   /** Resume a previously paused workflow. */
-  resume(id: string): Promise<Workflow> {
-    return this.client.post<Workflow>(`${this.path}/${encodeURIComponent(id)}/resume`);
+  async resume(id: string): Promise<Workflow> {
+    const res = await this.client.post<{ workflow: Workflow }>(
+      `${this.path}/${encodeURIComponent(id)}/resume`,
+    );
+    return res.workflow;
   }
 
   /** Fork a workflow into the caller's account. */
-  fork(id: string): Promise<Workflow> {
-    return this.client.post<Workflow>(`${this.path}/${encodeURIComponent(id)}/fork`);
+  async fork(id: string): Promise<Workflow> {
+    const res = await this.client.post<{ workflow: Workflow; forkedFrom: string }>(
+      `${this.path}/${encodeURIComponent(id)}/fork`,
+    );
+    return res.workflow;
   }
 }
 
@@ -82,17 +121,17 @@ export const useInvalidateWorkflows: ResourceHooks<Workflow, WorkflowListParams>
 
 // ─────────── custom mutations ───────────
 
-/** Trigger an immediate run. Invalidates the detail query on success. */
 export function useRunWorkflow(
-  options?: MutationOpts<{ ok: true; runId: string }, string>,
-): UseMutationResult<{ ok: true; runId: string }, ApiError, string> {
+  options?: MutationOpts<{ workflow: Workflow; execution: ExecuteResult }, string>,
+): UseMutationResult<{ workflow: Workflow; execution: ExecuteResult }, ApiError, string> {
   const qc = useQueryClient();
-  return useMutation<{ ok: true; runId: string }, ApiError, string>({
+  return useMutation<{ workflow: Workflow; execution: ExecuteResult }, ApiError, string>({
     ...options,
     mutationFn: (id) => workflowsResource.run(id),
     onSuccess: (...args) => {
       const [, id] = args;
       qc.invalidateQueries({ queryKey: workflowKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: workflowKeys.all() });
       return options?.onSuccess?.(...args);
     },
   });
@@ -144,10 +183,6 @@ export function useForkWorkflow(
   });
 }
 
-/**
- * Factory for tests / impersonation: bind the resource to a custom client
- * and re-derive the hooks. Most callers do not need this.
- */
 export function workflowsHooksFor(client: ApiClient): ResourceHooks<Workflow, WorkflowListParams> {
   const r = new WorkflowsResource(client, '/workflows');
   return makeResourceHooks<Workflow, WorkflowListParams>(r);

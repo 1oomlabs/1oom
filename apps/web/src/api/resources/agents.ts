@@ -1,36 +1,76 @@
-import { apiClient } from '../client';
-import { type ResourceHooks, makeResourceHooks } from '../hooks';
-import { Resource } from '../resource';
+import {
+  type UseMutationResult,
+  type UseQueryResult,
+  useMutation,
+  useQuery,
+} from '@tanstack/react-query';
 
+import { apiClient } from '../client';
+import type { ApiError } from '../errors';
+import type { MutationOpts, QueryOpts } from '../hooks';
+import { makeQueryKeys } from '../keys';
+import type { Intent } from './workflows';
+
+/**
+ * Agent catalog entry. Matches `apps/api/src/routes/agents.ts` shape.
+ * Not full CRUD - the agent list is curated server-side.
+ */
 export interface Agent {
   id: string;
   name: string;
-  handle: string;
-  bio?: string;
-  address: string;
-  joined: string;
-  stats: {
-    published: number;
-    installs: number;
-    runs: number;
-  };
+  description: string;
+  actions: string[];
 }
 
-export interface AgentListParams extends Record<string, string | number | boolean | undefined> {
-  q?: string;
-  sort?: 'newest' | 'popular';
-}
-
-// No agent-specific actions yet - use the base Resource directly.
-// Promote to a subclass when first custom mutation is needed.
-export const agentsResource = new Resource<Agent, AgentListParams>(apiClient, '/agents');
-
-const baseHooks = makeResourceHooks<Agent, AgentListParams>(agentsResource);
-
-const { keys: agentKeys, useList, useOne, useInvalidate } = baseHooks;
-
+const path = '/agents';
+const agentKeys = makeQueryKeys(path);
 export { agentKeys };
-export const useAgentsList: ResourceHooks<Agent, AgentListParams>['useList'] = useList;
-export const useAgent: ResourceHooks<Agent, AgentListParams>['useOne'] = useOne;
-export const useInvalidateAgents: ResourceHooks<Agent, AgentListParams>['useInvalidate'] =
-  useInvalidate;
+
+export function useAgentsList(options?: QueryOpts<Agent[]>): UseQueryResult<Agent[], ApiError> {
+  return useQuery<Agent[], ApiError>({
+    ...options,
+    queryKey: agentKeys.list(),
+    queryFn: async () => {
+      const res = await apiClient.get<{ agents: Agent[] }>(path);
+      return res.agents;
+    },
+  });
+}
+
+export function useAgent(
+  id: string | undefined,
+  options?: QueryOpts<Agent>,
+): UseQueryResult<Agent, ApiError> {
+  return useQuery<Agent, ApiError>({
+    ...options,
+    queryKey: agentKeys.detail(id ?? ''),
+    queryFn: async () => {
+      const res = await apiClient.get<{ agent: Agent }>(`${path}/${encodeURIComponent(id!)}`);
+      return res.agent;
+    },
+    enabled: Boolean(id) && options?.enabled !== false,
+  });
+}
+
+/**
+ * Send a natural-language message to an agent and get back an extracted intent.
+ * Useful as a preview before committing to /api/workflows POST.
+ */
+export interface AgentIntentResult {
+  agent: string;
+  message: string;
+  intent: Intent;
+}
+
+export function useAgentIntent(
+  agentId: string,
+  options?: MutationOpts<AgentIntentResult, { message: string }>,
+): UseMutationResult<AgentIntentResult, ApiError, { message: string }> {
+  return useMutation<AgentIntentResult, ApiError, { message: string }>({
+    ...options,
+    mutationFn: ({ message }) =>
+      apiClient.post<AgentIntentResult>(`${path}/${encodeURIComponent(agentId)}/intent`, {
+        message,
+      }),
+  });
+}
