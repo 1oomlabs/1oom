@@ -469,7 +469,7 @@ export const sepoliaTemplateMetadata = {
         ),
       },
     ],
-    runtimePlaceholders: [],
+    runtimePlaceholders: ['$MOCK_WSTETH'],
     runtimePlaceholderValues: [],
     demoParameters: [
       {
@@ -496,6 +496,7 @@ export const sepoliaTemplateMetadata = {
       'MockLido Sepolia deployment address',
       'MockStETH Sepolia deployment address',
       'MockWstETH Sepolia deployment address',
+      '$MOCK_WSTETH runtime placeholder value',
     ],
     unsupportedOperations: [
       'rpc-call',

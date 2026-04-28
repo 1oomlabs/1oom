@@ -17,6 +17,7 @@ export const lidoStakeTemplate: Template = {
       method: 'submit',
       args: ['0x0000000000000000000000000000000000000000'],
     },
+    { contract: 'MockStETH', method: 'approve', args: ['$MOCK_WSTETH', '$amount'] },
     { contract: 'MockWstETH', method: 'wrap', args: ['$amount'] },
   ],
 };
