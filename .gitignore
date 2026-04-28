@@ -37,8 +37,12 @@ Thumbs.db
 # AI tooling (local only)
 .claude/
 .omc/
+.omx/
 CLAUDE.md
 AGENTS.md
+person-c/
+/SCOPE-C.md
+/docs/person-c/
 .cursorrules
 
 # Foundry
