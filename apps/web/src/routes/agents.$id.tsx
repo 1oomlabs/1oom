@@ -1,15 +1,18 @@
-import { Link, createFileRoute, useParams } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 
-import { useAgent, useMarketplaceList } from '@/api';
+import { EmptyState } from '@/components/shared/empty-state';
+import { ErrorState } from '@/components/shared/error-state';
+import { LoadingGrid } from '@/components/shared/loading-grid';
 import { AgentAvatar } from '@/components/ui/agent-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { Separator } from '@/components/ui/separator';
-import { Skeleton, WorkflowCardSkeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { StatTile } from '@/components/ui/stat-tile';
 import { WorkflowCard } from '@/components/ui/workflow-card';
+import { useAgentProfileVM } from '@/hooks/page/use-agent-profile-vm';
 import { listingToCard } from '@/lib/view-models';
 
 export const Route: AnyRoute = createFileRoute('/agents/$id')({
@@ -17,11 +20,9 @@ export const Route: AnyRoute = createFileRoute('/agents/$id')({
 });
 
 function AgentProfilePage() {
-  const { id } = useParams({ from: '/agents/$id' });
-  const { data: agent, isLoading: loadingAgent, isError } = useAgent(id);
-  const { data: listings, isLoading: loadingListings } = useMarketplaceList();
+  const vm = useAgentProfileVM();
 
-  if (loadingAgent) {
+  if (vm.isLoading) {
     return (
       <div className="container-wide py-16 md:py-24">
         <div className="flex items-end gap-6">
@@ -37,12 +38,11 @@ function AgentProfilePage() {
     );
   }
 
-  if (isError || !agent) {
+  if (vm.isError || !vm.agent) {
     return (
       <div className="container-wide py-24">
-        <div className="flex flex-col items-center gap-4 border border-dashed border-destructive/40 bg-destructive/5 py-16 text-center">
-          <p className="font-display text-2xl font-semibold tracking-tight">Agent not found</p>
-          <p className="max-w-prose text-sm text-muted-foreground">No agent with id “{id}”.</p>
+        <ErrorState title="Agent not found" message={`No agent with id "${vm.id}".`} />
+        <div className="mt-4 flex justify-center">
           <Button variant="outline" size="sm" asChild>
             <Link to="/marketplace">Back to marketplace</Link>
           </Button>
@@ -51,9 +51,7 @@ function AgentProfilePage() {
     );
   }
 
-  const totalListings = listings?.length ?? 0;
-  const totalRuns = (listings ?? []).reduce((sum, l) => sum + l.stats.runs, 0);
-  const totalInstalls = (listings ?? []).reduce((sum, l) => sum + l.stats.installs, 0);
+  const { agent, listings, loadingListings, stats } = vm;
 
   return (
     <div className="container-wide py-16 md:py-24">
@@ -87,15 +85,19 @@ function AgentProfilePage() {
       <p className="mt-8 max-w-prose text-lg text-muted-foreground">{agent.description}</p>
 
       <div className="mt-12 grid grid-cols-1 gap-px bg-border md:grid-cols-3">
-        <StatTile label="Listings" value={String(totalListings)} className="border-0 bg-card" />
+        <StatTile
+          label="Listings"
+          value={String(stats.totalListings)}
+          className="border-0 bg-card"
+        />
         <StatTile
           label="Total installs"
-          value={totalInstalls.toLocaleString()}
+          value={stats.totalInstalls.toLocaleString()}
           className="border-0 bg-card"
         />
         <StatTile
           label="Total runs"
-          value={totalRuns.toLocaleString()}
+          value={stats.totalRuns.toLocaleString()}
           className="border-0 bg-card"
         />
       </div>
@@ -109,16 +111,9 @@ function AgentProfilePage() {
         </div>
 
         {loadingListings ? (
-          <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: skeletons have no stable id
-              <WorkflowCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : !listings || listings.length === 0 ? (
-          <div className="border border-dashed border-border bg-surface-subtle py-16 text-center">
-            <p className="text-muted-foreground">No marketplace activity yet.</p>
-          </div>
+          <LoadingGrid count={3} columns={3} />
+        ) : listings.length === 0 ? (
+          <EmptyState title="No marketplace activity yet." />
         ) : (
           <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
             {listings.slice(0, 6).map((l) => (

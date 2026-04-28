@@ -1,9 +1,7 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
-import { useAccount, useChainId } from 'wagmi';
 
-import { type CreateWorkflowRequest, useCreateWorkflow, useExtractIntent } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
@@ -12,72 +10,16 @@ import { Label } from '@/components/ui/label';
 import { PromptInput } from '@/components/ui/prompt-input';
 import { Separator } from '@/components/ui/separator';
 import { ConnectWalletButton } from '@/components/wallet/connect-wallet-button';
-import { DEFAULT_CHAIN_ID } from '@/lib/wagmi';
-import { useDraftStore } from '@/store/draft-store';
-import { toast } from '@/store/toast-store';
-
-const promptExamples = [
-  'Every Friday, deposit 100 USDC into Aave',
-  'Buy 0.05 ETH each Monday with USDC on Uniswap',
-  'Stake 1 ETH into Lido and compound stETH monthly',
-];
+import { useWorkflowBuilderVM } from '@/hooks/page/use-workflow-builder-vm';
 
 export const Route: AnyRoute = createFileRoute('/workflows/new')({
   component: WorkflowBuilderPage,
 });
 
+type BuilderVM = ReturnType<typeof useWorkflowBuilderVM>;
+
 function WorkflowBuilderPage() {
-  const navigate = useNavigate();
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-
-  const prompt = useDraftStore((s) => s.prompt);
-  const intent = useDraftStore((s) => s.intent);
-  const overrides = useDraftStore((s) => s.overrides);
-  const setPrompt = useDraftStore((s) => s.setPrompt);
-  const setIntent = useDraftStore((s) => s.setIntent);
-  const setOverride = useDraftStore((s) => s.setOverride);
-  const reset = useDraftStore((s) => s.reset);
-
-  const extract = useExtractIntent({
-    onSuccess: ({ intent: extracted }) => {
-      setIntent(extracted);
-    },
-    onError: (err) => {
-      toast.error('Could not extract intent', err.message);
-    },
-  });
-
-  const create = useCreateWorkflow<CreateWorkflowRequest>({
-    onSuccess: (workflow) => {
-      toast.success('Workflow deployed', `Job ${workflow.id.slice(0, 8)} on KeeperHub`);
-      reset();
-      navigate({ to: '/workflows/$id', params: { id: workflow.id } });
-    },
-    onError: (err) => {
-      toast.error('Deploy failed', err.message);
-    },
-  });
-
-  const handleCompile = (value: string) => {
-    setPrompt(value);
-    extract.mutate({ prompt: value });
-  };
-
-  const handleDeploy = () => {
-    if (!isConnected || !address) {
-      toast.warning('Connect a wallet first', 'Workflows are owned by your wallet address.');
-      return;
-    }
-    if (!prompt) return;
-    create.mutate({
-      prompt,
-      owner: address,
-      chainId: chainId ?? DEFAULT_CHAIN_ID,
-    });
-  };
-
-  const resolvedParameters = { ...(intent?.parameters ?? {}), ...overrides };
+  const vm = useWorkflowBuilderVM();
 
   return (
     <div className="container-wide py-16 md:py-24">
@@ -96,23 +38,23 @@ function WorkflowBuilderPage() {
         <section className="lg:col-span-3">
           <div className="flex flex-col gap-6">
             <PromptInput
-              examples={promptExamples}
-              defaultValue={prompt}
-              onSubmit={handleCompile}
-              submitLabel={extract.isPending ? 'Compiling…' : 'Compile workflow'}
+              examples={vm.examples}
+              defaultValue={vm.prompt}
+              onSubmit={vm.handlers.onCompile}
+              submitLabel={vm.isCompiling ? 'Compiling…' : 'Compile workflow'}
             />
 
             <Separator className="my-2" />
 
             <ol className="flex flex-col gap-4 text-sm">
               <Step
-                done={!!prompt}
+                done={!!vm.prompt}
                 title="Describe in plain language"
                 hint="Tip: include the protocol, frequency, amount, and chain."
               />
               <Step
-                done={!!intent}
-                inProgress={extract.isPending}
+                done={!!vm.intent}
+                inProgress={vm.isCompiling}
                 title="Match a template"
                 hint="We pick the closest from Aave, Uniswap, Lido, or custom."
               />
@@ -123,7 +65,7 @@ function WorkflowBuilderPage() {
               />
               <Step
                 done={false}
-                inProgress={create.isPending}
+                inProgress={vm.isDeploying}
                 title="Deploy to KeeperHub"
                 hint="Optional: publish to the marketplace with x402 pricing."
               />
@@ -135,17 +77,19 @@ function WorkflowBuilderPage() {
           <div className="sticky top-24 flex flex-col gap-4 border border-border bg-card p-6">
             <div className="flex items-center justify-between">
               <Eyebrow tone="muted">Preview</Eyebrow>
-              {intent && (
-                <Badge variant="success">{(intent.confidence * 100).toFixed(0)}% confident</Badge>
+              {vm.intent && (
+                <Badge variant="success">
+                  {(vm.intent.confidence * 100).toFixed(0)}% confident
+                </Badge>
               )}
             </div>
 
-            {extract.isPending ? (
+            {vm.isCompiling ? (
               <div className="flex items-center gap-3 py-8 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Extracting intent…
               </div>
-            ) : !intent ? (
+            ) : !vm.intent ? (
               <div className="flex flex-col items-start gap-2 py-8 text-sm text-muted-foreground">
                 <span className="font-mono text-xs uppercase tracking-[0.14em]">
                   awaiting prompt
@@ -153,72 +97,79 @@ function WorkflowBuilderPage() {
                 <p>Submit a description on the left. The compiled workflow will appear here.</p>
               </div>
             ) : (
-              <>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    Template
-                  </span>
-                  <span className="font-mono text-sm">{intent.templateId}</span>
-                </div>
-
-                {intent.reasoning && (
-                  <p className="text-sm text-muted-foreground">{intent.reasoning}</p>
-                )}
-
-                <Separator />
-
-                <div className="flex flex-col gap-3">
-                  {Object.entries(resolvedParameters).map(([k, v]) => (
-                    <div key={k} className="flex flex-col gap-1.5">
-                      <Label htmlFor={`p-${k}`}>{k}</Label>
-                      <Input
-                        id={`p-${k}`}
-                        defaultValue={String(v ?? '')}
-                        onChange={(e) => setOverride(k, e.target.value)}
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <Separator />
-
-                {!isConnected ? (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      Connect a wallet to deploy. The wallet address becomes the workflow owner.
-                    </p>
-                    <ConnectWalletButton />
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      variant="accent"
-                      size="lg"
-                      onClick={handleDeploy}
-                      disabled={create.isPending}
-                    >
-                      {create.isPending ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Deploying…
-                        </>
-                      ) : (
-                        'Deploy to KeeperHub'
-                      )}
-                    </Button>
-                    <Button type="button" variant="outline" size="md" onClick={() => reset()}>
-                      Discard draft
-                    </Button>
-                  </div>
-                )}
-              </>
+              <PreviewPanel vm={vm} />
             )}
           </div>
         </aside>
       </div>
     </div>
+  );
+}
+
+function PreviewPanel({ vm }: { vm: BuilderVM }) {
+  if (!vm.intent) return null;
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Template
+        </span>
+        <span className="font-mono text-sm">{vm.intent.templateId}</span>
+      </div>
+
+      {vm.intent.reasoning && (
+        <p className="text-sm text-muted-foreground">{vm.intent.reasoning}</p>
+      )}
+
+      <Separator />
+
+      <div className="flex flex-col gap-3">
+        {Object.entries(vm.resolvedParameters).map(([k, v]) => (
+          <div key={k} className="flex flex-col gap-1.5">
+            <Label htmlFor={`p-${k}`}>{k}</Label>
+            <Input
+              id={`p-${k}`}
+              defaultValue={String(v ?? '')}
+              onChange={(e) => vm.handlers.onParamChange(k, e.target.value)}
+              className="font-mono text-xs"
+            />
+          </div>
+        ))}
+      </div>
+
+      <Separator />
+
+      {!vm.isWalletConnected ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground">
+            Connect a wallet to deploy. The wallet address becomes the workflow owner.
+          </p>
+          <ConnectWalletButton />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="accent"
+            size="lg"
+            onClick={vm.handlers.onDeploy}
+            disabled={vm.isDeploying}
+          >
+            {vm.isDeploying ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Deploying…
+              </>
+            ) : (
+              'Deploy to KeeperHub'
+            )}
+          </Button>
+          <Button type="button" variant="outline" size="md" onClick={vm.handlers.onReset}>
+            Discard draft
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 

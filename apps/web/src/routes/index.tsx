@@ -1,51 +1,41 @@
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 
-import { useMarketplaceList } from '@/api';
+import { EmptyState } from '@/components/shared/empty-state';
+import { LoadingGrid } from '@/components/shared/loading-grid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { PromptInput } from '@/components/ui/prompt-input';
-import { WorkflowCardSkeleton } from '@/components/ui/skeleton';
 import { StatTile } from '@/components/ui/stat-tile';
 import { WorkflowCard } from '@/components/ui/workflow-card';
+import { promptExamples, useHomePageVM } from '@/hooks/page/use-home-page-vm';
 import { listingToCard } from '@/lib/view-models';
-import { useDraftStore } from '@/store/draft-store';
-
-const promptExamples = [
-  'Every Friday, deposit 100 USDC into Aave',
-  'Buy 0.05 ETH each Monday with USDC on Uniswap',
-  'Stake 1 ETH into Lido and compound stETH monthly',
-];
 
 export const Route: AnyRoute = createFileRoute('/')({
   component: HomePage,
 });
 
+const howItWorks = [
+  {
+    n: '01',
+    title: 'Describe',
+    body: 'Type what you want in natural language. Claude maps it to a template and extracts the parameters.',
+  },
+  {
+    n: '02',
+    title: 'Review',
+    body: 'See the resolved workflow as typed JSON. Tweak parameters, run a dry simulation, or just accept.',
+  },
+  {
+    n: '03',
+    title: 'Deploy & share',
+    body: 'KeeperHub deploys the job. Optionally publish it to the marketplace and earn from x402 micropayments.',
+  },
+];
+
 function HomePage() {
-  const navigate = useNavigate();
-  const setPrompt = useDraftStore((s) => s.setPrompt);
-
-  const { data: listings, isLoading } = useMarketplaceList(
-    { sort: 'popular', limit: 6 },
-    { staleTime: 30_000 },
-  );
-
-  const featured = (listings ?? []).slice(0, 6);
-
-  const totalRuns = featured.reduce((sum, l) => sum + l.stats.runs, 0);
-  const totalInstalls = featured.reduce((sum, l) => sum + l.stats.installs, 0);
-  const stats = [
-    { label: 'Workflows', value: String(listings?.length ?? 0) },
-    { label: 'Featured', value: String(featured.length) },
-    { label: 'Total runs', value: totalRuns.toLocaleString() },
-    { label: 'Total installs', value: totalInstalls.toLocaleString() },
-  ];
-
-  const onPromptSubmit = (value: string) => {
-    setPrompt(value);
-    navigate({ to: '/workflows/new' });
-  };
+  const vm = useHomePageVM();
 
   return (
     <div className="flex flex-col">
@@ -62,7 +52,7 @@ function HomePage() {
             KeeperHub, and publish it to a marketplace where other agents can discover and remix it.
           </p>
 
-          <PromptInput className="mt-4" examples={promptExamples} onSubmit={onPromptSubmit} />
+          <PromptInput className="mt-4" examples={promptExamples} onSubmit={vm.onPromptSubmit} />
 
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>Integrates with</span>
@@ -76,7 +66,7 @@ function HomePage() {
 
       <section className="border-y border-border bg-surface-subtle">
         <div className="container-wide grid grid-cols-2 gap-px bg-border md:grid-cols-4">
-          {stats.map((s) => (
+          {vm.stats.map((s) => (
             <StatTile key={s.label} label={s.label} value={s.value} className="border-0 bg-card" />
           ))}
         </div>
@@ -99,18 +89,16 @@ function HomePage() {
           </Button>
         </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: skeletons have no stable id
-              <WorkflowCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : featured.length === 0 ? (
-          <EmptyMarketplace />
+        {vm.isLoading ? (
+          <LoadingGrid count={6} columns={3} />
+        ) : vm.featured.length === 0 ? (
+          <EmptyState
+            title="No workflows yet"
+            description="Be the first to publish. Describe an automation above and ship it in under a minute."
+          />
         ) : (
           <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-            {featured.map((listing) => (
+            {vm.featured.map((listing) => (
               <WorkflowCard
                 key={listing.id}
                 data={listingToCard(listing)}
@@ -131,23 +119,7 @@ function HomePage() {
           </div>
 
           <ol className="grid grid-cols-1 gap-12 md:grid-cols-3">
-            {[
-              {
-                n: '01',
-                title: 'Describe',
-                body: 'Type what you want in natural language. Claude maps it to a template and extracts the parameters.',
-              },
-              {
-                n: '02',
-                title: 'Review',
-                body: 'See the resolved workflow as typed JSON. Tweak parameters, run a dry simulation, or just accept.',
-              },
-              {
-                n: '03',
-                title: 'Deploy & share',
-                body: 'KeeperHub deploys the job. Optionally publish it to the marketplace and earn from x402 micropayments.',
-              },
-            ].map((step) => (
+            {howItWorks.map((step) => (
               <li key={step.n} className="flex flex-col gap-4">
                 <span className="font-mono text-sm tabular text-accent">{step.n}</span>
                 <h3 className="font-display text-xl font-semibold tracking-tight">{step.title}</h3>
@@ -157,17 +129,6 @@ function HomePage() {
           </ol>
         </div>
       </section>
-    </div>
-  );
-}
-
-function EmptyMarketplace() {
-  return (
-    <div className="flex flex-col items-center gap-4 border border-dashed border-border bg-surface-subtle py-20 text-center">
-      <p className="font-display text-2xl font-semibold tracking-tight">No workflows yet</p>
-      <p className="max-w-prose text-muted-foreground">
-        Be the first to publish. Describe an automation above and ship it in under a minute.
-      </p>
     </div>
   );
 }
