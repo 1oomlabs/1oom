@@ -1,15 +1,20 @@
-import { type UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult } from '@tanstack/react-query';
 
 import type { CreateWorkflowRequest, Workflow } from '@loomlabs/schema';
 
 import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
-import { type MutationOpts, type ResourceHooks, makeResourceHooks } from '../hooks';
-import { Resource } from '../resource';
+import {
+  type MutationOpts,
+  type ResourceHooks,
+  makeResourceHooks,
+  useResourceMutation,
+} from '../hooks';
+import { type ListParams, Resource } from '../resource';
 
 export type { Workflow, CreateWorkflowRequest };
 
-export interface WorkflowListParams extends Record<string, string | number | boolean | undefined> {
+export interface WorkflowListParams extends ListParams {
   status?: Workflow['status'];
   owner?: string;
   limit?: number;
@@ -28,36 +33,15 @@ export interface ExecuteResult {
 }
 
 /**
- * Domain extension of `Resource<Workflow>`.
+ * Domain extension of `Resource<Workflow>`. CRUD methods come from the base
+ * class; the `envelope` config tells it to unwrap `{workflow}`/`{workflows}`.
  *
- * Backend wraps responses in envelopes ({workflow}/{workflows}), so all CRUD
- * methods are overridden to unwrap. Custom mutations (run/pause/resume/fork)
- * follow the same pattern.
+ * `run`/`pause`/`resume`/`fork` use non-standard paths so they stay as
+ * custom methods.
  */
 export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
-  override async list(params?: WorkflowListParams): Promise<Workflow[]> {
-    const res = await this.client.get<{ workflows: Workflow[] }>(this.path, { query: params });
-    return res.workflows;
-  }
-
-  override async get(id: string): Promise<Workflow> {
-    const res = await this.client.get<{ workflow: Workflow }>(
-      `${this.path}/${encodeURIComponent(id)}`,
-    );
-    return res.workflow;
-  }
-
-  /**
-   * The create endpoint compiles natural language into a workflow in one shot.
-   * Body must match `CreateWorkflowRequest` ({ prompt, owner, chainId }).
-   */
-  override async create(body: CreateWorkflowRequest | Record<string, unknown>): Promise<Workflow> {
-    const res = await this.client.post<{ workflow: Workflow; intent: Intent }>(this.path, body);
-    return res.workflow;
-  }
-
-  override async remove(id: string): Promise<void> {
-    await this.client.delete<{ deleted: true }>(`${this.path}/${encodeURIComponent(id)}`);
+  constructor(client: ApiClient, path = '/workflows') {
+    super(client, path, { list: 'workflows', item: 'workflow' });
   }
 
   /** Trigger an immediate run of a deployed workflow. */
@@ -92,7 +76,7 @@ export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
   }
 }
 
-export const workflowsResource = new WorkflowsResource(apiClient, '/workflows');
+export const workflowsResource = new WorkflowsResource(apiClient);
 
 /** Standard CRUD hooks generated from the resource. */
 const baseHooks = makeResourceHooks<Workflow, WorkflowListParams>(workflowsResource);
@@ -120,70 +104,50 @@ export const useInvalidateWorkflows: ResourceHooks<Workflow, WorkflowListParams>
   useInvalidate;
 
 // ─────────── custom mutations ───────────
+// All four follow the same shape: call the resource method, invalidate
+// the relevant query keys. `useResourceMutation` removes the boilerplate.
 
 export function useRunWorkflow(
   options?: MutationOpts<{ workflow: Workflow; execution: ExecuteResult }, string>,
 ): UseMutationResult<{ workflow: Workflow; execution: ExecuteResult }, ApiError, string> {
-  const qc = useQueryClient();
-  return useMutation<{ workflow: Workflow; execution: ExecuteResult }, ApiError, string>({
-    ...options,
+  return useResourceMutation({
     mutationFn: (id) => workflowsResource.run(id),
-    onSuccess: (...args) => {
-      const [, id] = args;
-      qc.invalidateQueries({ queryKey: workflowKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: workflowKeys.all() });
-      return options?.onSuccess?.(...args);
-    },
+    invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
+    options,
   });
 }
 
 export function usePauseWorkflow(
   options?: MutationOpts<Workflow, string>,
 ): UseMutationResult<Workflow, ApiError, string> {
-  const qc = useQueryClient();
-  return useMutation<Workflow, ApiError, string>({
-    ...options,
+  return useResourceMutation({
     mutationFn: (id) => workflowsResource.pause(id),
-    onSuccess: (...args) => {
-      const [, id] = args;
-      qc.invalidateQueries({ queryKey: workflowKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: workflowKeys.all() });
-      return options?.onSuccess?.(...args);
-    },
+    invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
+    options,
   });
 }
 
 export function useResumeWorkflow(
   options?: MutationOpts<Workflow, string>,
 ): UseMutationResult<Workflow, ApiError, string> {
-  const qc = useQueryClient();
-  return useMutation<Workflow, ApiError, string>({
-    ...options,
+  return useResourceMutation({
     mutationFn: (id) => workflowsResource.resume(id),
-    onSuccess: (...args) => {
-      const [, id] = args;
-      qc.invalidateQueries({ queryKey: workflowKeys.detail(id) });
-      qc.invalidateQueries({ queryKey: workflowKeys.all() });
-      return options?.onSuccess?.(...args);
-    },
+    invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
+    options,
   });
 }
 
 export function useForkWorkflow(
   options?: MutationOpts<Workflow, string>,
 ): UseMutationResult<Workflow, ApiError, string> {
-  const qc = useQueryClient();
-  return useMutation<Workflow, ApiError, string>({
-    ...options,
+  return useResourceMutation({
     mutationFn: (id) => workflowsResource.fork(id),
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: workflowKeys.all() });
-      return options?.onSuccess?.(...args);
-    },
+    invalidate: () => [workflowKeys.all()],
+    options,
   });
 }
 
 export function workflowsHooksFor(client: ApiClient): ResourceHooks<Workflow, WorkflowListParams> {
-  const r = new WorkflowsResource(client, '/workflows');
+  const r = new WorkflowsResource(client);
   return makeResourceHooks<Workflow, WorkflowListParams>(r);
 }

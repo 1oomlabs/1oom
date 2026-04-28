@@ -6,7 +6,7 @@ export { Resource } from './resource';
 export type { Identifiable, ListParams } from './resource';
 export { makeQueryKeys } from './keys';
 export type { QueryKeyFactory } from './keys';
-export { makeResourceHooks } from './hooks';
+export { makeResourceHooks, useResourceMutation } from './hooks';
 export type { ResourceHooks, QueryOpts, MutationOpts } from './hooks';
 
 // Domain hooks - import these in components.

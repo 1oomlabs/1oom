@@ -134,3 +134,45 @@ export function makeResourceHooks<T extends Identifiable, Q extends ListParams =
 
   return { keys, resource, useList, useOne, useCreate, useUpdate, useRemove, useInvalidate };
 }
+
+/**
+ * Helper for resource-specific mutations (e.g. `runWorkflow`, `installListing`).
+ *
+ * Wraps `useMutation` and centralises the invalidate-on-success pattern that
+ * repeats across every custom action hook. Pass:
+ *   - `mutationFn`: the actual API call
+ *   - `invalidate`: list of query keys to bust on success (optional)
+ *   - `options`: standard TanStack Query mutation options
+ *
+ * Example:
+ * ```ts
+ * export function useRunWorkflow(options) {
+ *   return useResourceMutation({
+ *     mutationFn: (id: string) => workflowsResource.run(id),
+ *     invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
+ *     options,
+ *   });
+ * }
+ * ```
+ */
+export function useResourceMutation<TData, TVars>(config: {
+  mutationFn: (vars: TVars) => Promise<TData>;
+  invalidate?: (data: TData, vars: TVars) => readonly (readonly unknown[])[];
+  options?: MutationOpts<TData, TVars>;
+}): UseMutationResult<TData, ApiError, TVars> {
+  const { mutationFn, invalidate, options } = config;
+  const qc = useQueryClient();
+  return useMutation<TData, ApiError, TVars>({
+    ...options,
+    mutationFn,
+    onSuccess: (...args) => {
+      if (invalidate) {
+        const [data, vars] = args;
+        for (const key of invalidate(data, vars)) {
+          qc.invalidateQueries({ queryKey: key });
+        }
+      }
+      return options?.onSuccess?.(...args);
+    },
+  });
+}

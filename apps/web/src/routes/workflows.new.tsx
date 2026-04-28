@@ -73,7 +73,7 @@ function WorkflowBuilderPage() {
     create.mutate({
       prompt,
       owner: address,
-      chainId: chainId || DEFAULT_CHAIN_ID,
+      chainId: chainId ?? DEFAULT_CHAIN_ID,
     });
   };
 

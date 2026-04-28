@@ -1,16 +1,15 @@
-import { type UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult } from '@tanstack/react-query';
 
 import type { MarketplaceListing } from '@loomlabs/schema';
 
-import { apiClient } from '../client';
+import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
 import { type MutationOpts, type ResourceHooks, makeResourceHooks } from '../hooks';
-import { Resource } from '../resource';
+import { type ListParams, Resource } from '../resource';
 
 export type { MarketplaceListing };
 
-export interface MarketplaceListParams
-  extends Record<string, string | number | boolean | undefined> {
+export interface MarketplaceListParams extends ListParams {
   protocol?: string;
   tag?: string;
   author?: string;
@@ -27,33 +26,12 @@ export interface PublishListingInput extends Record<string, unknown> {
 }
 
 class MarketplaceResource extends Resource<MarketplaceListing, MarketplaceListParams> {
-  override async list(params?: MarketplaceListParams): Promise<MarketplaceListing[]> {
-    const res = await this.client.get<{ items: MarketplaceListing[]; total: number }>(this.path, {
-      query: params,
-    });
-    return res.items;
-  }
-
-  override async get(id: string): Promise<MarketplaceListing> {
-    const res = await this.client.get<{ listing: MarketplaceListing }>(
-      `${this.path}/${encodeURIComponent(id)}`,
-    );
-    return res.listing;
-  }
-
-  override async create(
-    body: PublishListingInput | Record<string, unknown>,
-  ): Promise<MarketplaceListing> {
-    const res = await this.client.post<{ listing: MarketplaceListing }>(this.path, body);
-    return res.listing;
-  }
-
-  override async remove(id: string): Promise<void> {
-    await this.client.delete<{ deleted: true }>(`${this.path}/${encodeURIComponent(id)}`);
+  constructor(client: ApiClient, path = '/marketplace') {
+    super(client, path, { list: 'items', item: 'listing' });
   }
 }
 
-export const marketplaceResource = new MarketplaceResource(apiClient, '/marketplace');
+export const marketplaceResource = new MarketplaceResource(apiClient);
 
 const baseHooks = makeResourceHooks<MarketplaceListing, MarketplaceListParams>(marketplaceResource);
 
