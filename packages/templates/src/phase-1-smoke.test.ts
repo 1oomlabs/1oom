@@ -28,7 +28,12 @@ type SmokeTestRunResult = {
 };
 
 const expectedTemplateIds = ['aave-recurring-deposit', 'uniswap-dca', 'lido-stake'];
-const allowedRuntimePlaceholders = new Set(['$AAVE_POOL', '$UNISWAP_ROUTER', '$user']);
+const allowedRuntimePlaceholders = new Set([
+  '$AAVE_POOL',
+  '$UNISWAP_ROUTER',
+  '$MOCK_WSTETH',
+  '$user',
+]);
 const templatesWithResolvedProtocolData = new Set(['aave-recurring-deposit', 'uniswap-dca']);
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -249,6 +254,15 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
           (action) => action.contract === 'MockLido' && action.method === 'submit',
         ),
         'Lido template must submit ETH to MockLido',
+      );
+      assert(
+        lidoTemplate.actions.some(
+          (action) =>
+            action.contract === 'MockStETH' &&
+            action.method === 'approve' &&
+            action.args.includes('$MOCK_WSTETH'),
+        ),
+        'Lido template must approve MockWstETH before wrapping',
       );
       assert(
         lidoTemplate.actions.some(
