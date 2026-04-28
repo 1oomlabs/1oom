@@ -11,10 +11,6 @@ import type { MutationOpts, QueryOpts } from '../hooks';
 import { makeQueryKeys } from '../keys';
 import type { Intent } from './workflows';
 
-/**
- * Agent catalog entry. Matches `apps/api/src/routes/agents.ts` shape.
- * Not full CRUD - the agent list is curated server-side.
- */
 export interface Agent {
   id: string;
   name: string;
@@ -52,10 +48,6 @@ export function useAgent(
   });
 }
 
-/**
- * Send a natural-language message to an agent and get back an extracted intent.
- * Useful as a preview before committing to /api/workflows POST.
- */
 export interface AgentIntentResult {
   agent: string;
   message: string;

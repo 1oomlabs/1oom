@@ -25,7 +25,7 @@ const protocolLabel: Record<WorkflowCardData['protocol'], string> = {
 interface WorkflowCardProps {
   data: WorkflowCardData;
   className?: string;
-  /** When true (default), the card is a Link to /workflows/$id. Set false for read-only previews. */
+
   linked?: boolean;
 }
 

@@ -2,14 +2,10 @@ import { create } from 'zustand';
 
 import type { Intent } from '@/api';
 
-/**
- * In-flight workflow draft. Lives between "extract intent" and "deploy".
- * Cleared after successful deploy or explicit reset.
- */
 interface DraftState {
   prompt: string;
   intent: Intent | null;
-  /** User overrides applied on top of intent.parameters. */
+
   overrides: Record<string, unknown>;
 
   setPrompt: (prompt: string) => void;
@@ -17,7 +13,6 @@ interface DraftState {
   setOverride: (key: string, value: unknown) => void;
   reset: () => void;
 
-  /** Merged parameters (intent + overrides). */
   resolvedParameters: () => Record<string, unknown>;
 }
 

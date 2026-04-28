@@ -12,52 +12,35 @@ import type { ApiError } from './errors';
 import { type QueryKeyFactory, makeQueryKeys } from './keys';
 import type { Identifiable, ListParams, Resource } from './resource';
 
-/** Options accepted by query hooks (excluding what we own: queryKey, queryFn). */
 export type QueryOpts<T> = Omit<UseQueryOptions<T, ApiError>, 'queryKey' | 'queryFn'>;
 
-/** Options accepted by mutation hooks (we provide mutationFn). */
 export type MutationOpts<TData, TVars> = Omit<
   UseMutationOptions<TData, ApiError, TVars>,
   'mutationFn'
 >;
 
 export interface ResourceHooks<T extends Identifiable, Q extends ListParams> {
-  /** Stable query-key factory bound to this resource. */
   keys: QueryKeyFactory;
 
-  /** Underlying resource (escape hatch for custom calls). */
   resource: Resource<T, Q>;
 
-  /** GET /resource — list with optional filter params. */
   useList: (params?: Q, options?: QueryOpts<T[]>) => UseQueryResult<T[], ApiError>;
 
-  /** GET /resource/:id — single entity, disabled when id is falsy. */
   useOne: (id: string | undefined, options?: QueryOpts<T>) => UseQueryResult<T, ApiError>;
 
-  /** POST /resource — create, returns the newly created entity. */
   useCreate: <TBody extends Partial<T> | Record<string, unknown> = Partial<T>>(
     options?: MutationOpts<T, TBody>,
   ) => UseMutationResult<T, ApiError, TBody>;
 
-  /** PATCH /resource/:id — update by id. */
   useUpdate: <TBody extends Partial<T> | Record<string, unknown> = Partial<T>>(
     options?: MutationOpts<T, { id: string; body: TBody }>,
   ) => UseMutationResult<T, ApiError, { id: string; body: TBody }>;
 
-  /** DELETE /resource/:id. */
   useRemove: (options?: MutationOpts<void, string>) => UseMutationResult<void, ApiError, string>;
 
-  /** Invalidate all queries for this resource. */
   useInvalidate: () => () => Promise<void>;
 }
 
-/**
- * Bind a `Resource<T>` to a full set of TanStack Query hooks.
- *
- * Subclasses of `Resource` automatically benefit — pass an instance of the
- * subclass and the hooks below operate against it. Add resource-specific
- * mutations alongside these in the resource's own file.
- */
 export function makeResourceHooks<T extends Identifiable, Q extends ListParams = ListParams>(
   resource: Resource<T, Q>,
 ): ResourceHooks<T, Q> {
@@ -74,7 +57,7 @@ export function makeResourceHooks<T extends Identifiable, Q extends ListParams =
     useQuery<T, ApiError>({
       ...options,
       queryKey: keys.detail(id ?? ''),
-      // queryFn is gated by `enabled` below; id is guaranteed truthy when called.
+
       queryFn: () => resource.get(id as string),
       enabled: Boolean(id) && options?.enabled !== false,
     });
@@ -135,26 +118,6 @@ export function makeResourceHooks<T extends Identifiable, Q extends ListParams =
   return { keys, resource, useList, useOne, useCreate, useUpdate, useRemove, useInvalidate };
 }
 
-/**
- * Helper for resource-specific mutations (e.g. `runWorkflow`, `installListing`).
- *
- * Wraps `useMutation` and centralises the invalidate-on-success pattern that
- * repeats across every custom action hook. Pass:
- *   - `mutationFn`: the actual API call
- *   - `invalidate`: list of query keys to bust on success (optional)
- *   - `options`: standard TanStack Query mutation options
- *
- * Example:
- * ```ts
- * export function useRunWorkflow(options) {
- *   return useResourceMutation({
- *     mutationFn: (id: string) => workflowsResource.run(id),
- *     invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
- *     options,
- *   });
- * }
- * ```
- */
 export function useResourceMutation<TData, TVars>(config: {
   mutationFn: (vars: TVars) => Promise<TData>;
   invalidate?: (data: TData, vars: TVars) => readonly (readonly unknown[])[];

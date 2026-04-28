@@ -7,8 +7,7 @@ const wcProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | un
 const connectors = [
   injected({ shimDisconnect: true }),
   coinbaseWallet({ appName: 'loomlabs' }),
-  // WalletConnect requires a project id - skip the connector entirely if not provided
-  // so we don't ship a broken option to users.
+
   ...(wcProjectId
     ? [
         walletConnect({
@@ -41,5 +40,4 @@ declare module 'wagmi' {
   }
 }
 
-/** Default chain users land on. Sepolia for hackathon demos. */
 export const DEFAULT_CHAIN_ID = sepolia.id;

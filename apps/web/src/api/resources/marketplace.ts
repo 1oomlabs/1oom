@@ -55,10 +55,6 @@ export const useInvalidateMarketplace: ResourceHooks<
   MarketplaceListParams
 >['useInvalidate'] = useInvalidate;
 
-/**
- * Publish a workflow to the marketplace. Body shape is `PublishListingInput`,
- * not the listing itself — the backend snapshots the workflow into the listing.
- */
 export function usePublishToMarketplace(
   options?: MutationOpts<MarketplaceListing, PublishListingInput>,
 ): UseMutationResult<MarketplaceListing, ApiError, PublishListingInput> {

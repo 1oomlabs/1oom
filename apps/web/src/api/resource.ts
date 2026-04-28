@@ -1,54 +1,16 @@
 import type { ApiClient, RequestOptions } from './client';
 
-/** Minimum shape every resource entity must satisfy. */
 export interface Identifiable {
   id: string;
 }
 
-/**
- * Base shape for list-endpoint query strings. Every domain `*ListParams`
- * extends this so the type signature stays compatible with `Resource.list`.
- */
 export type ListParams = Record<string, string | number | boolean | undefined>;
 
-/**
- * When set, `Resource` auto-unwraps responses that come wrapped in an
- * envelope (e.g. `{ workflows: [...] }` or `{ listing: {...} }`).
- *
- * Pass `{ list: 'workflows', item: 'workflow' }` for an endpoint where the
- * list response is `{ workflows: [...] }` and singular endpoints return
- * `{ workflow: {...} }`.
- *
- * Leave fields undefined when the corresponding endpoint returns the bare
- * entity / array directly.
- */
 export interface ResourceEnvelope {
   list?: string;
   item?: string;
 }
 
-/**
- * Base class for any REST-shaped resource. Subclass this to add
- * resource-specific methods (e.g. `runWorkflow`). Each instance is bound
- * to a single `path` (e.g. `/workflows`) and reuses a shared `ApiClient`.
- *
- * If your backend wraps responses in envelopes, pass an `envelope` arg
- * to the constructor instead of overriding every CRUD method.
- *
- * Example:
- *
- * ```ts
- * class WorkflowsResource extends Resource<Workflow> {
- *   constructor(client: ApiClient) {
- *     super(client, '/workflows', { list: 'workflows', item: 'workflow' });
- *   }
- *
- *   run(id: string) {
- *     return this.client.post<{ ok: true }>(`${this.path}/${id}/run`);
- *   }
- * }
- * ```
- */
 export class Resource<T extends Identifiable, Q extends ListParams = ListParams> {
   constructor(
     protected readonly client: ApiClient,
@@ -87,8 +49,6 @@ export class Resource<T extends Identifiable, Q extends ListParams = ListParams>
   async remove(id: string, options?: RequestOptions): Promise<void> {
     await this.client.delete<unknown>(`${this.path}/${encodeURIComponent(id)}`, options);
   }
-
-  // ─────────── envelope helpers ───────────
 
   protected unwrapList(res: unknown): T[] {
     if (!this.envelope.list) return res as T[];

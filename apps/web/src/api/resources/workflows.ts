@@ -32,26 +32,17 @@ export interface ExecuteResult {
   status: string;
 }
 
-/**
- * Domain extension of `Resource<Workflow>`. CRUD methods come from the base
- * class; the `envelope` config tells it to unwrap `{workflow}`/`{workflows}`.
- *
- * `run`/`pause`/`resume`/`fork` use non-standard paths so they stay as
- * custom methods.
- */
 export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
   constructor(client: ApiClient, path = '/workflows') {
     super(client, path, { list: 'workflows', item: 'workflow' });
   }
 
-  /** Trigger an immediate run of a deployed workflow. */
   async run(id: string): Promise<{ workflow: Workflow; execution: ExecuteResult }> {
     return this.client.post<{ workflow: Workflow; execution: ExecuteResult }>(
       `${this.path}/${encodeURIComponent(id)}/run`,
     );
   }
 
-  /** Pause a deployed workflow without removing it. */
   async pause(id: string): Promise<Workflow> {
     const res = await this.client.post<{ workflow: Workflow }>(
       `${this.path}/${encodeURIComponent(id)}/pause`,
@@ -59,7 +50,6 @@ export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
     return res.workflow;
   }
 
-  /** Resume a previously paused workflow. */
   async resume(id: string): Promise<Workflow> {
     const res = await this.client.post<{ workflow: Workflow }>(
       `${this.path}/${encodeURIComponent(id)}/resume`,
@@ -67,7 +57,6 @@ export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
     return res.workflow;
   }
 
-  /** Fork a workflow into the caller's account. */
   async fork(id: string): Promise<Workflow> {
     const res = await this.client.post<{ workflow: Workflow; forkedFrom: string }>(
       `${this.path}/${encodeURIComponent(id)}/fork`,
@@ -78,7 +67,6 @@ export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
 
 export const workflowsResource = new WorkflowsResource(apiClient);
 
-/** Standard CRUD hooks generated from the resource. */
 const baseHooks = makeResourceHooks<Workflow, WorkflowListParams>(workflowsResource);
 
 const {
@@ -102,10 +90,6 @@ export const useDeleteWorkflow: ResourceHooks<Workflow, WorkflowListParams>['use
   useRemove;
 export const useInvalidateWorkflows: ResourceHooks<Workflow, WorkflowListParams>['useInvalidate'] =
   useInvalidate;
-
-// ─────────── custom mutations ───────────
-// All four follow the same shape: call the resource method, invalidate
-// the relevant query keys. `useResourceMutation` removes the boilerplate.
 
 export function useRunWorkflow(
   options?: MutationOpts<{ workflow: Workflow; execution: ExecuteResult }, string>,

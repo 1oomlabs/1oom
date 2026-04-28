@@ -7,7 +7,7 @@ export interface Toast {
   title: string;
   description?: string;
   variant: ToastVariant;
-  /** ms after which toast auto-dismisses. 0 = never. */
+
   duration: number;
 }
 
@@ -47,7 +47,6 @@ export const useToastStore = create<ToastState>((set, get) => ({
   clear: () => set({ toasts: [] }),
 }));
 
-/** Imperative helper for non-component callers. */
 export const toast = {
   show: (input: Parameters<ToastState['push']>[0]) => useToastStore.getState().push(input),
   success: (title: string, description?: string) =>

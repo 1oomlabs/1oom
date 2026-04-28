@@ -32,13 +32,7 @@ export const DialogContent = forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
-    {/*
-      Centering uses transform: translate(-50%, -50%). The animation
-      keyframes embed that same translate so the dialog stays anchored
-      to the viewport center for the entire transition. Don't add
-      Tailwind translate-* classes here — they would conflict with the
-      animated transform property.
-    */}
+    {}
     <DialogPrimitive.Content
       ref={ref}
       className={cn(

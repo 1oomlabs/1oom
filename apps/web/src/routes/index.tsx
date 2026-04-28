@@ -33,8 +33,6 @@ function HomePage() {
 
   const featured = (listings ?? []).slice(0, 6);
 
-  // Derive marketplace stats from the listings we already fetched.
-  // Avoids a separate aggregation endpoint at backend.
   const totalRuns = featured.reduce((sum, l) => sum + l.stats.runs, 0);
   const totalInstalls = featured.reduce((sum, l) => sum + l.stats.installs, 0);
   const stats = [

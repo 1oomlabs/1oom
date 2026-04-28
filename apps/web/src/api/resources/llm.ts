@@ -10,10 +10,6 @@ export type ExtractIntentResult = {
   intent: Intent;
 };
 
-/**
- * Non-CRUD endpoint - one-shot natural-language extraction.
- * Returns the prompt echoed back plus the extracted intent.
- */
 export function useExtractIntent(
   options?: MutationOpts<ExtractIntentResult, { prompt: string }>,
 ): UseMutationResult<ExtractIntentResult, ApiError, { prompt: string }> {

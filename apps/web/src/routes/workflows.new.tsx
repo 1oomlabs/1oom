@@ -77,7 +77,6 @@ function WorkflowBuilderPage() {
     });
   };
 
-  // Resolved parameters = LLM extraction + user overrides
   const resolvedParameters = { ...(intent?.parameters ?? {}), ...overrides };
 
   return (
