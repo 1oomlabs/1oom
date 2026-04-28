@@ -6,7 +6,10 @@ import {
   type Intent,
   useCreateWorkflow,
   useExtractIntent,
+  useInvalidateMarketplace,
+  usePublishToMarketplace,
 } from '@/api';
+import { protocolFromTemplateId } from '@/lib/view-models';
 import { DEFAULT_CHAIN_ID } from '@/lib/wagmi';
 import { useDraftStore } from '@/store/draft-store';
 import { toast } from '@/store/toast-store';
@@ -51,11 +54,40 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
     onError: (err) => toast.error('Could not extract intent', err.message),
   });
 
+  const invalidateMarketplace = useInvalidateMarketplace();
+  const publish = usePublishToMarketplace({
+    onSuccess: async (listing) => {
+      toast.success('Published to marketplace', listing.id.slice(0, 8));
+      await invalidateMarketplace();
+      navigate({ to: '/marketplace' });
+    },
+    onError: (err, vars) => {
+      toast.error('Publish failed', err.message);
+      navigate({ to: '/workflows/$id', params: { id: vars.workflowId } });
+    },
+  });
+
   const create = useCreateWorkflow<CreateWorkflowRequest>({
     onSuccess: (workflow) => {
       toast.success('Workflow deployed', `Job ${workflow.id.slice(0, 8)} on KeeperHub`);
+
+      // 백엔드 스키마대로 marketplace publish 연결 (기본 free)
+      if (address) {
+        const protocol = protocolFromTemplateId(workflow.templateId);
+        publish.mutate({
+          workflowId: workflow.id,
+          author: address,
+          tags: [protocol, workflow.templateId],
+          pricing: { type: 'free' },
+        });
+      }
+
       reset();
-      navigate({ to: '/workflows/$id', params: { id: workflow.id } });
+
+      // publish 실패/미실행(주소 없음) 시에도 최소한 상세 페이지로 이동은 유지
+      if (!address) {
+        navigate({ to: '/workflows/$id', params: { id: workflow.id } });
+      }
     },
     onError: (err) => toast.error('Deploy failed', err.message),
   });

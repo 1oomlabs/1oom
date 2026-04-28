@@ -26,12 +26,7 @@ export function Header() {
           <Link to="/workflows/new" className={navLinkClass} activeProps={{ className: 'active' }}>
             Create
           </Link>
-          <Link
-            to="/agents/$id"
-            params={{ id: 'alice' }}
-            className={navLinkClass}
-            activeProps={{ className: 'active' }}
-          >
+          <Link to="/agents" className={navLinkClass} activeProps={{ className: 'active' }}>
             Agents
           </Link>
         </nav>

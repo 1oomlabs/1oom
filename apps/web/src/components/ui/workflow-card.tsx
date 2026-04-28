@@ -29,7 +29,7 @@ interface WorkflowCardProps {
   linked?: boolean;
 }
 
-function CardBody({ data }: { data: WorkflowCardData }) {
+function CardBody({ data, linked }: { data: WorkflowCardData; linked: boolean }) {
   return (
     <>
       <header className="flex items-start justify-between gap-4">
@@ -37,8 +37,16 @@ function CardBody({ data }: { data: WorkflowCardData }) {
           <Badge variant="outline" className="self-start">
             {protocolLabel[data.protocol]}
           </Badge>
-          <h3 className="font-display text-xl font-semibold tracking-tight text-balance">
-            {data.name}
+          <h3 className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight text-balance transition-colors duration-std ease-out-expo group-hover:text-accent">
+            <span>{data.name}</span>
+            {linked && (
+              <span
+                aria-hidden
+                className="translate-x-0 text-accent opacity-0 transition-[opacity,transform] duration-std ease-out-expo group-hover:translate-x-1 group-hover:opacity-100"
+              >
+                →
+              </span>
+            )}
           </h3>
         </div>
         {data.price && (
@@ -71,22 +79,22 @@ function CardBody({ data }: { data: WorkflowCardData }) {
 export function WorkflowCard({ data, className, linked = true }: WorkflowCardProps) {
   const baseClass = cn(
     'group flex flex-col gap-5 border border-border bg-card p-6',
-    'transition-colors duration-std ease-out-expo',
-    linked && 'cursor-pointer hover:border-foreground/30',
+    'transition-[border-color,background-color] duration-std ease-out-expo',
+    linked && 'cursor-pointer hover:border-foreground/40 hover:bg-surface-subtle',
     className,
   );
 
   if (linked) {
     return (
       <Link to="/workflows/$id" params={{ id: data.id }} className={baseClass}>
-        <CardBody data={data} />
+        <CardBody data={data} linked />
       </Link>
     );
   }
 
   return (
     <div className={baseClass}>
-      <CardBody data={data} />
+      <CardBody data={data} linked={false} />
     </div>
   );
 }

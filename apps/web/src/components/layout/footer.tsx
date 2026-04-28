@@ -4,7 +4,7 @@ const groups = [
     links: [
       { href: '/marketplace', label: 'Marketplace' },
       { href: '/workflows/new', label: 'Create workflow' },
-      { href: '/agents/alice', label: 'Agents' },
+      { href: '/agents', label: 'Agents' },
     ],
   },
   {

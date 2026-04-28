@@ -66,8 +66,8 @@ function WorkflowBuilderPage() {
               <Step
                 done={false}
                 inProgress={vm.isDeploying}
-                title="Deploy to KeeperHub"
-                hint="Optional: publish to the marketplace with x402 pricing."
+                title="Deploy & publish"
+                hint="Deploys to KeeperHub and lists the workflow on the marketplace as free."
               />
             </ol>
           </div>
@@ -161,7 +161,7 @@ function PreviewPanel({ vm }: { vm: BuilderVM }) {
                 Deploying…
               </>
             ) : (
-              'Deploy to KeeperHub'
+              'Deploy & publish'
             )}
           </Button>
           <Button type="button" variant="outline" size="md" onClick={vm.handlers.onReset}>
