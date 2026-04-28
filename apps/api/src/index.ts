@@ -4,6 +4,9 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 import { env } from '@/env';
+import { mapError } from '@/errors';
+import { logError } from '@/log';
+import { agentsRouter } from '@/routes/agents';
 import { llmRouter } from '@/routes/llm';
 import { marketplaceRouter } from '@/routes/marketplace';
 import { workflowsRouter } from '@/routes/workflows';
@@ -25,10 +28,13 @@ app.get('/health', (c) => c.json({ status: 'ok', ts: Date.now() }));
 app.route('/api/workflows', workflowsRouter);
 app.route('/api/marketplace', marketplaceRouter);
 app.route('/api/llm', llmRouter);
+app.route('/api/agents', agentsRouter);
 
 app.onError((err, c) => {
-  console.error('[api] unhandled error:', err);
-  return c.json({ error: err.message || 'internal error' }, 500);
+  // 사용자 친화 응답으로 매핑하되, 콘솔에는 원본 에러 그대로 남김 (디버깅용)
+  logError('api', 'unhandled error', err);
+  const { status, body } = mapError(err);
+  return c.json(body, status);
 });
 
 const port = env.PORT;
