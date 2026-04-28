@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils';
 
 interface MonoAddressProps extends React.HTMLAttributes<HTMLSpanElement> {
   address: string;
-  /** Truncate as 0x1234...abcd */
+
   truncate?: boolean;
 }
 

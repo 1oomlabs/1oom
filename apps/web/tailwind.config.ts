@@ -158,13 +158,27 @@ const config: Config = {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        // Dialog needs to keep its centering translate while animating.
+        // Embedding translate(-50%, -50%) in the keyframe avoids the snap
+        // when the keyframe transform overrides Tailwind's centering classes.
+        'dialog-show': {
+          from: { opacity: '0', transform: 'translate(-50%, calc(-50% + 6px)) scale(0.98)' },
+          to: { opacity: '1', transform: 'translate(-50%, -50%) scale(1)' },
+        },
+        'dialog-hide': {
+          from: { opacity: '1', transform: 'translate(-50%, -50%) scale(1)' },
+          to: { opacity: '0', transform: 'translate(-50%, calc(-50% + 6px)) scale(0.98)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'fade-out': 'fade-in 150ms cubic-bezier(0.16, 1, 0.3, 1) reverse',
         'fade-up': 'fade-up 300ms cubic-bezier(0.16, 1, 0.3, 1)',
         'slide-down': 'slide-down 200ms cubic-bezier(0.16, 1, 0.3, 1)',
         marquee: 'marquee 40s linear infinite',
         shimmer: 'shimmer 2s ease-in-out infinite',
+        'dialog-show': 'dialog-show 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'dialog-hide': 'dialog-hide 150ms cubic-bezier(0.16, 1, 0.3, 1)',
       },
       maxWidth: {
         prose: '65ch',

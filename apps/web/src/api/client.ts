@@ -3,36 +3,25 @@ import { ApiError } from './errors';
 export type AuthTokenProvider = () => string | null | undefined;
 
 export interface ApiClientOptions {
-  /** Base URL prefix. Pathnames passed to `request()` are appended after this. */
   baseUrl: string;
-  /** Optional auth token getter, called per request. */
+
   getAuthToken?: AuthTokenProvider;
-  /** Custom fetch implementation (for testing / SSR). Defaults to global fetch. */
+
   fetchImpl?: typeof fetch;
-  /** Default headers merged into every request. */
+
   defaultHeaders?: Record<string, string>;
-  /** Number of times to retry on network failure (status 0 / 5xx). Default 0. */
+
   retries?: number;
 }
 
 export interface RequestOptions extends Omit<RequestInit, 'body'> {
-  /** Body is JSON-stringified automatically when an object is passed. */
   body?: BodyInit | Record<string, unknown> | unknown[] | null;
-  /** Query string params, serialised with URLSearchParams. */
+
   query?: Record<string, string | number | boolean | undefined>;
-  /** Skip JSON parsing and return Response. Use for streaming etc. */
+
   raw?: boolean;
 }
 
-/**
- * Thin typed wrapper around fetch.
- *
- * - Base for `Resource<T>` and any domain-specific subclass.
- * - Centralises base URL, auth, and error mapping so call sites stay small.
- * - Subclasses extend this only when they need additional shared concerns
- *   (e.g. multipart, websocket bridging). Most domain classes extend
- *   `Resource<T>` instead.
- */
 export class ApiClient {
   protected readonly baseUrl: string;
   protected readonly fetchImpl: typeof fetch;
@@ -52,10 +41,6 @@ export class ApiClient {
     this.getAuthToken = opts.getAuthToken;
   }
 
-  /**
-   * Perform a typed JSON request. Subclasses should not override this method;
-   * they should compose by calling `this.request(...)`.
-   */
   async request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
     const { body, query, raw, headers, ...rest } = options;
     const url = this.buildUrl(path, query);
@@ -90,14 +75,13 @@ export class ApiClient {
           if (err instanceof ApiError) throw err;
           throw ApiError.network(url, err);
         }
-        // exponential backoff: 200ms, 400ms, 800ms…
+
         await wait(200 * 2 ** attempt);
       }
     }
     throw lastErr;
   }
 
-  /** Convenience helpers — most subclasses use these. */
   get<T>(path: string, options: Omit<RequestOptions, 'body'> = {}): Promise<T> {
     return this.request<T>(path, { ...options, method: 'GET' });
   }
@@ -113,8 +97,6 @@ export class ApiClient {
   delete<T = void>(path: string, options: RequestOptions = {}): Promise<T> {
     return this.request<T>(path, { ...options, method: 'DELETE' });
   }
-
-  // ─────────── internals ───────────
 
   private buildUrl(path: string, query?: RequestOptions['query']): string {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -165,11 +147,6 @@ function wait(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Default singleton client used by the app. Reads `VITE_API_URL` at module
- * load time. Use this for everyday hooks; instantiate a custom `ApiClient`
- * only for tests, alternate environments, or impersonation flows.
- */
 export const apiClient = new ApiClient({
   baseUrl: import.meta.env.VITE_API_URL ?? '/api',
 });

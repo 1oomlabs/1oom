@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 interface PromptInputProps {
   className?: string;
   placeholder?: string;
-  /** Initial value, applied on mount only. Parent updates after mount are ignored. */
+
   defaultValue?: string;
   submitLabel?: string;
   onSubmit?: (value: string) => void;

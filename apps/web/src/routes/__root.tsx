@@ -4,6 +4,7 @@ import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
+import { Toaster } from '@/components/ui/toaster';
 
 type RouterContext = {
   queryClient: QueryClient;
@@ -21,6 +22,7 @@ function RootComponent() {
         <Outlet />
       </main>
       <Footer />
+      <Toaster />
       <TanStackRouterDevtools position="bottom-right" />
     </div>
   );
