@@ -129,7 +129,7 @@ function PreviewPanel({ vm }: { vm: BuilderVM }) {
             <Label htmlFor={`p-${k}`}>{k}</Label>
             <Input
               id={`p-${k}`}
-              defaultValue={String(v ?? '')}
+              value={String(v ?? '')}
               onChange={(e) => vm.handlers.onParamChange(k, e.target.value)}
               className="font-mono text-xs"
             />

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { TOAST_DEFAULT_DURATION_MS } from '@/lib/constants';
+
 export type ToastVariant = 'default' | 'success' | 'destructive' | 'warning';
 
 export interface Toast {
@@ -24,8 +26,6 @@ interface ToastState {
   clear: () => void;
 }
 
-const DEFAULT_DURATION = 4000;
-
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
   push: (input) => {
@@ -35,7 +35,7 @@ export const useToastStore = create<ToastState>((set, get) => ({
       title: input.title,
       description: input.description,
       variant: input.variant ?? 'default',
-      duration: input.duration ?? DEFAULT_DURATION,
+      duration: input.duration ?? TOAST_DEFAULT_DURATION_MS,
     };
     set((s) => ({ toasts: [...s.toasts, toast] }));
     if (toast.duration > 0) {

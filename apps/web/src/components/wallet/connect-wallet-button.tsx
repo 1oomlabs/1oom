@@ -1,7 +1,6 @@
 import { Check, ChevronDown, Copy, LogOut, Wallet } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccount, useChainId, useConnect, useDisconnect, useSwitchChain } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,20 +19,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { COPIED_RESET_MS, SUPPORTED_CHAINS, chainLabel, shortenAddress } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-
-const supportedChains = [
-  { id: sepolia.id, label: 'Sepolia' },
-  { id: mainnet.id, label: 'Ethereum' },
-];
-
-function shorten(addr: string): string {
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
-function chainLabel(id?: number): string {
-  return supportedChains.find((c) => c.id === id)?.label ?? `Chain ${id ?? '?'}`;
-}
 
 export function ConnectWalletButton({ className }: { className?: string }) {
   const { address, isConnected } = useAccount();
@@ -44,6 +31,14 @@ export function ConnectWalletButton({ className }: { className?: string }) {
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copiedTimeoutRef.current != null) clearTimeout(copiedTimeoutRef.current);
+    },
+    [],
+  );
 
   if (isConnected && address) {
     return (
@@ -51,7 +46,7 @@ export function ConnectWalletButton({ className }: { className?: string }) {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className={cn('gap-2 font-mono text-xs', className)}>
             <span className="h-2 w-2 rounded-full bg-success" aria-hidden />
-            <span className="tabular">{shorten(address)}</span>
+            <span className="tabular">{shortenAddress(address)}</span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
@@ -66,7 +61,7 @@ export function ConnectWalletButton({ className }: { className?: string }) {
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Switch chain</DropdownMenuLabel>
-          {supportedChains.map((c) => (
+          {SUPPORTED_CHAINS.map((c) => (
             <DropdownMenuItem
               key={c.id}
               disabled={switching || c.id === chainId}
@@ -86,7 +81,8 @@ export function ConnectWalletButton({ className }: { className?: string }) {
               e.preventDefault();
               await navigator.clipboard.writeText(address);
               setCopied(true);
-              setTimeout(() => setCopied(false), 1200);
+              if (copiedTimeoutRef.current != null) clearTimeout(copiedTimeoutRef.current);
+              copiedTimeoutRef.current = setTimeout(() => setCopied(false), COPIED_RESET_MS);
             }}
           >
             {copied ? (

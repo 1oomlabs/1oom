@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+
 import type { ApiClient, RequestOptions } from './client';
 
 export interface Identifiable {
@@ -11,11 +13,22 @@ export interface ResourceEnvelope {
   item?: string;
 }
 
+/**
+ * Structural shape of any zod schema that parses unknown input into T.
+ * Avoids zod's three-parameter ZodType<Output, Def, Input> generic that
+ * mismatches when schemas use .default() / .optional() (input differs from
+ * output). Any zod schema satisfies this contract.
+ */
+export interface SchemaLike<T> {
+  parse: (value: unknown) => T;
+}
+
 export class Resource<T extends Identifiable, Q extends ListParams = ListParams> {
   constructor(
     protected readonly client: ApiClient,
     public readonly path: string,
     protected readonly envelope: ResourceEnvelope = {},
+    protected readonly schema?: SchemaLike<T>,
   ) {}
 
   async list(params?: Q, options?: RequestOptions): Promise<T[]> {
@@ -51,22 +64,42 @@ export class Resource<T extends Identifiable, Q extends ListParams = ListParams>
   }
 
   protected unwrapList(res: unknown): T[] {
-    if (!this.envelope.list) return res as T[];
-    const arr = (res as Record<string, unknown>)[this.envelope.list];
-    if (!Array.isArray(arr)) {
+    const raw: unknown = this.envelope.list
+      ? (res as Record<string, unknown>)[this.envelope.list]
+      : res;
+    if (!Array.isArray(raw)) {
       throw new Error(
-        `[resource:${this.path}] expected array under '${this.envelope.list}' in response`,
+        `[resource:${this.path}] expected array under '${this.envelope.list ?? '<root>'}' in response`,
       );
     }
-    return arr as T[];
+    if (this.schema) {
+      const schema = this.schema;
+      return raw.map((item, i) => this.parseOrThrow(schema, item, `[${i}]`));
+    }
+    return raw as T[];
   }
 
   protected unwrapItem(res: unknown): T {
-    if (!this.envelope.item) return res as T;
-    const item = (res as Record<string, unknown>)[this.envelope.item];
-    if (item == null) {
+    const raw: unknown = this.envelope.item
+      ? (res as Record<string, unknown>)[this.envelope.item]
+      : res;
+    if (raw == null) {
       throw new Error(`[resource:${this.path}] expected '${this.envelope.item}' field in response`);
     }
-    return item as T;
+    return this.schema ? this.parseOrThrow(this.schema, raw, '') : (raw as T);
+  }
+
+  private parseOrThrow(schema: SchemaLike<T>, value: unknown, location: string): T {
+    try {
+      return schema.parse(value);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const issues = err.issues
+          .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+          .join('; ');
+        throw new Error(`[resource:${this.path}${location}] schema validation failed: ${issues}`);
+      }
+      throw err;
+    }
   }
 }

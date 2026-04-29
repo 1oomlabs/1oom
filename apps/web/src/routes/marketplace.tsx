@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 
 import { EmptyState } from '@/components/shared/empty-state';
@@ -8,11 +8,24 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { WorkflowCard } from '@/components/ui/workflow-card';
-import { protocols, sorts, useMarketplacePageVM } from '@/hooks/page/use-marketplace-page-vm';
+import {
+  marketplaceSearchSchema,
+  protocols,
+  sorts,
+  useMarketplacePageVM,
+} from '@/hooks/page/use-marketplace-page-vm';
 import { listingToCard } from '@/lib/view-models';
 
 export const Route: AnyRoute = createFileRoute('/marketplace')({
+  validateSearch: marketplaceSearchSchema,
   component: MarketplacePage,
 });
 
@@ -28,7 +41,7 @@ function MarketplacePage() {
         size="large"
         action={
           <Button variant="accent" size="lg" asChild>
-            <a href="/workflows/new">Publish workflow</a>
+            <Link to="/workflows/new">Publish workflow</Link>
           </Button>
         }
         className="mb-12"
@@ -60,17 +73,18 @@ function MarketplacePage() {
             placeholder="Search workflows…"
             className="w-full md:w-64"
           />
-          <select
-            value={vm.sort}
-            onChange={(e) => vm.setSort(e.target.value as typeof vm.sort)}
-            className="h-10 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {sorts.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+          <Select value={vm.sort} onValueChange={(v) => vm.setSort(v as typeof vm.sort)}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              {sorts.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

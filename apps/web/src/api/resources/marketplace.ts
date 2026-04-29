@@ -1,6 +1,6 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 
-import type { MarketplaceListing } from '@loomlabs/schema';
+import { type MarketplaceListing, marketplaceListingSchema } from '@loomlabs/schema';
 
 import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
@@ -27,7 +27,7 @@ export interface PublishListingInput extends Record<string, unknown> {
 
 class MarketplaceResource extends Resource<MarketplaceListing, MarketplaceListParams> {
   constructor(client: ApiClient, path = '/marketplace') {
-    super(client, path, { list: 'items', item: 'listing' });
+    super(client, path, { list: 'items', item: 'listing' }, marketplaceListingSchema);
   }
 }
 

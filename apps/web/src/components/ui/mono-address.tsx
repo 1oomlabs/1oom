@@ -1,3 +1,4 @@
+import { shortenAddress } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 interface MonoAddressProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -6,13 +7,8 @@ interface MonoAddressProps extends React.HTMLAttributes<HTMLSpanElement> {
   truncate?: boolean;
 }
 
-function shorten(addr: string): string {
-  if (addr.length <= 14) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
-}
-
 export function MonoAddress({ address, truncate = true, className, ...props }: MonoAddressProps) {
-  const shown = truncate ? shorten(address) : address;
+  const shown = truncate ? shortenAddress(address) : address;
   return (
     <span
       className={cn(
