@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router';
-import type { AnyRoute } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { ConnectWalletButton } from '@/components/wallet/connect-wallet-button';
 import { useWorkflowBuilderVM } from '@/hooks/page/use-workflow-builder-vm';
 
-export const Route: AnyRoute = createFileRoute('/workflows/new')({
+export const Route = createFileRoute('/workflows/new')({
   component: WorkflowBuilderPage,
 });
 
@@ -129,7 +128,7 @@ function PreviewPanel({ vm }: { vm: BuilderVM }) {
             <Label htmlFor={`p-${k}`}>{k}</Label>
             <Input
               id={`p-${k}`}
-              defaultValue={String(v ?? '')}
+              value={String(v ?? '')}
               onChange={(e) => vm.handlers.onParamChange(k, e.target.value)}
               className="font-mono text-xs"
             />
