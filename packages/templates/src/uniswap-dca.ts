@@ -26,7 +26,7 @@ export const uniswapDcaTemplate: Template = {
     {
       contract: 'UniswapRouter',
       method: 'exactInputSingle',
-      args: ['$tokenIn', '$tokenOut', '3000', '$user', '$amountIn', '0', '0'],
+      args: ['$tokenIn', '$tokenOut', '500', '$user', '$amountIn', '0', '0'],
     },
   ],
 };

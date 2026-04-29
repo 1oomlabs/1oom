@@ -1,16 +1,5 @@
 import type { ListParams } from './resource';
 
-/**
- * Deterministic query-key factory bound to a resource path.
- *
- * Conventions:
- *   key.all()                      → ['workflows']
- *   key.list(params)               → ['workflows', 'list', { ...params }]
- *   key.detail(id)                 → ['workflows', 'detail', id]
- *   key.action(name, args?)        → ['workflows', 'action', name, args]
- *
- * Use these factories instead of inline arrays so invalidation stays correct.
- */
 export function makeQueryKeys(resourcePath: string) {
   const root = stripLeadingSlash(resourcePath);
   return {

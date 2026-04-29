@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "tsx src/runtime-smoke.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
@@ -30,6 +31,8 @@
     }
   },
   "devDependencies": {
+    "@elizaos/core": "2.0.0-alpha.77",
+    "tsx": "^4.20.0",
     "typescript": "^5.7.2"
   }
 }

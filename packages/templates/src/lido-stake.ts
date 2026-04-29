@@ -12,6 +12,12 @@ export const lidoStakeTemplate: Template = {
   ],
   trigger: { type: 'cron', expression: '@once' },
   actions: [
-    { contract: 'Lido', method: 'submit', args: ['0x0000000000000000000000000000000000000000'] },
+    {
+      contract: 'MockLido',
+      method: 'submit',
+      args: ['0x0000000000000000000000000000000000000000'],
+    },
+    { contract: 'MockStETH', method: 'approve', args: ['$MOCK_WSTETH', '$amount'] },
+    { contract: 'MockWstETH', method: 'wrap', args: ['$amount'] },
   ],
 };

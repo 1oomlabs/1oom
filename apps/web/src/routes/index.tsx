@@ -1,24 +1,44 @@
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
 
+import { EmptyState } from '@/components/shared/empty-state';
+import { LoadingGrid } from '@/components/shared/loading-grid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { PromptInput } from '@/components/ui/prompt-input';
 import { StatTile } from '@/components/ui/stat-tile';
 import { WorkflowCard } from '@/components/ui/workflow-card';
-import { marketplaceStats, mockWorkflows, promptExamples } from '@/lib/mock';
+import { promptExamples, useHomePageVM } from '@/hooks/page/use-home-page-vm';
+import { listingToCard } from '@/lib/view-models';
 
 export const Route: AnyRoute = createFileRoute('/')({
   component: HomePage,
 });
 
+const howItWorks = [
+  {
+    n: '01',
+    title: 'Describe',
+    body: 'Type what you want in natural language. Claude maps it to a template and extracts the parameters.',
+  },
+  {
+    n: '02',
+    title: 'Review',
+    body: 'See the resolved workflow as typed JSON. Tweak parameters, run a dry simulation, or just accept.',
+  },
+  {
+    n: '03',
+    title: 'Deploy & share',
+    body: 'KeeperHub deploys the job. Optionally publish it to the marketplace and earn from x402 micropayments.',
+  },
+];
+
 function HomePage() {
-  const navigate = useNavigate();
+  const vm = useHomePageVM();
 
   return (
     <div className="flex flex-col">
-      {/* Hero */}
       <section className="container-wide pt-20 pb-16 md:pt-32 md:pb-24">
         <div className="flex flex-col gap-8 md:max-w-4xl">
           <Eyebrow tone="accent">From a sentence to a workflow</Eyebrow>
@@ -32,11 +52,7 @@ function HomePage() {
             KeeperHub, and publish it to a marketplace where other agents can discover and remix it.
           </p>
 
-          <PromptInput
-            className="mt-4"
-            examples={promptExamples}
-            onSubmit={() => navigate({ to: '/workflows/new' })}
-          />
+          <PromptInput className="mt-4" examples={promptExamples} onSubmit={vm.onPromptSubmit} />
 
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>Integrates with</span>
@@ -48,23 +64,14 @@ function HomePage() {
         </div>
       </section>
 
-      {/* Stats strip */}
       <section className="border-y border-border bg-surface-subtle">
         <div className="container-wide grid grid-cols-2 gap-px bg-border md:grid-cols-4">
-          {marketplaceStats.map((s) => (
-            <StatTile
-              key={s.label}
-              label={s.label}
-              value={s.value}
-              delta={s.delta}
-              hint={s.hint}
-              className="border-0 bg-card"
-            />
+          {vm.stats.map((s) => (
+            <StatTile key={s.label} label={s.label} value={s.value} className="border-0 bg-card" />
           ))}
         </div>
       </section>
 
-      {/* Featured workflows */}
       <section className="container-wide py-24">
         <div className="mb-12 flex flex-col items-start justify-between gap-6 md:flex-row md:items-end">
           <div className="flex flex-col gap-3">
@@ -82,14 +89,26 @@ function HomePage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
-          {mockWorkflows.slice(0, 6).map((w) => (
-            <WorkflowCard key={w.id} data={w} className="rounded-none border-0" />
-          ))}
-        </div>
+        {vm.isLoading ? (
+          <LoadingGrid count={6} columns={3} />
+        ) : vm.featured.length === 0 ? (
+          <EmptyState
+            title="No workflows yet"
+            description="Be the first to publish. Describe an automation above and ship it in under a minute."
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-px bg-border md:grid-cols-2 lg:grid-cols-3">
+            {vm.featured.map((listing) => (
+              <WorkflowCard
+                key={listing.id}
+                data={listingToCard(listing)}
+                className="rounded-none border-0"
+              />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* How it works */}
       <section className="border-t border-border bg-surface-subtle">
         <div className="container-wide py-24">
           <div className="mb-16 flex flex-col gap-3">
@@ -100,23 +119,7 @@ function HomePage() {
           </div>
 
           <ol className="grid grid-cols-1 gap-12 md:grid-cols-3">
-            {[
-              {
-                n: '01',
-                title: 'Describe',
-                body: 'Type what you want in natural language. Claude maps it to a template and extracts the parameters.',
-              },
-              {
-                n: '02',
-                title: 'Review',
-                body: 'See the resolved workflow as typed JSON. Tweak parameters, run a dry simulation, or just accept.',
-              },
-              {
-                n: '03',
-                title: 'Deploy & share',
-                body: 'KeeperHub deploys the job. Optionally publish it to the marketplace and earn from x402 micropayments.',
-              },
-            ].map((step) => (
+            {howItWorks.map((step) => (
               <li key={step.n} className="flex flex-col gap-4">
                 <span className="font-mono text-sm tabular text-accent">{step.n}</span>
                 <h3 className="font-display text-xl font-semibold tracking-tight">{step.title}</h3>

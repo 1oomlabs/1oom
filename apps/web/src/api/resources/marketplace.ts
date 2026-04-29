@@ -1,23 +1,15 @@
-import { type UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { UseMutationResult } from '@tanstack/react-query';
 
-import { apiClient } from '../client';
+import { type MarketplaceListing, marketplaceListingSchema } from '@loomlabs/schema';
+
+import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
 import { type MutationOpts, type ResourceHooks, makeResourceHooks } from '../hooks';
-import { Resource } from '../resource';
-import type { Workflow } from './workflows';
+import { type ListParams, Resource } from '../resource';
 
-export interface MarketplaceListing {
-  id: string;
-  workflow: Workflow;
-  author: string;
-  tags: string[];
-  pricing: { type: 'free' } | { type: 'x402'; amount: string; token: string };
-  stats: { installs: number; runs: number };
-  createdAt: number;
-}
+export type { MarketplaceListing };
 
-export interface MarketplaceListParams
-  extends Record<string, string | number | boolean | undefined> {
+export interface MarketplaceListParams extends ListParams {
   protocol?: string;
   tag?: string;
   author?: string;
@@ -26,16 +18,20 @@ export interface MarketplaceListParams
   cursor?: string;
 }
 
+export interface PublishListingInput extends Record<string, unknown> {
+  workflowId: string;
+  author: string;
+  tags?: string[];
+  pricing?: { type: 'free' } | { type: 'x402'; amount: string; token: string };
+}
+
 class MarketplaceResource extends Resource<MarketplaceListing, MarketplaceListParams> {
-  /** Install a listing into the caller's account, optionally paying via x402. */
-  install(id: string): Promise<{ ok: true; workflowId: string }> {
-    return this.client.post<{ ok: true; workflowId: string }>(
-      `${this.path}/${encodeURIComponent(id)}/install`,
-    );
+  constructor(client: ApiClient, path = '/marketplace') {
+    super(client, path, { list: 'items', item: 'listing' }, marketplaceListingSchema);
   }
 }
 
-export const marketplaceResource = new MarketplaceResource(apiClient, '/marketplace');
+export const marketplaceResource = new MarketplaceResource(apiClient);
 
 const baseHooks = makeResourceHooks<MarketplaceListing, MarketplaceListParams>(marketplaceResource);
 
@@ -50,10 +46,6 @@ export const useMarketplaceListing: ResourceHooks<
   MarketplaceListing,
   MarketplaceListParams
 >['useOne'] = useOne;
-export const usePublishToMarketplace: ResourceHooks<
-  MarketplaceListing,
-  MarketplaceListParams
->['useCreate'] = useCreate;
 export const useUnpublishListing: ResourceHooks<
   MarketplaceListing,
   MarketplaceListParams
@@ -63,17 +55,8 @@ export const useInvalidateMarketplace: ResourceHooks<
   MarketplaceListParams
 >['useInvalidate'] = useInvalidate;
 
-export function useInstallListing(
-  options?: MutationOpts<{ ok: true; workflowId: string }, string>,
-): UseMutationResult<{ ok: true; workflowId: string }, ApiError, string> {
-  const qc = useQueryClient();
-  return useMutation<{ ok: true; workflowId: string }, ApiError, string>({
-    ...options,
-    mutationFn: (id) => marketplaceResource.install(id),
-    onSuccess: (...args) => {
-      const [, id] = args;
-      qc.invalidateQueries({ queryKey: marketplaceKeys.detail(id) });
-      return options?.onSuccess?.(...args);
-    },
-  });
+export function usePublishToMarketplace(
+  options?: MutationOpts<MarketplaceListing, PublishListingInput>,
+): UseMutationResult<MarketplaceListing, ApiError, PublishListingInput> {
+  return useCreate<PublishListingInput>(options);
 }

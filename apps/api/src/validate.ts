@@ -6,8 +6,8 @@ import type { ZodSchema } from 'zod';
 type Target = 'json' | 'query' | 'param' | 'header' | 'cookie' | 'form';
 
 export function zValidator<T extends ZodSchema>(target: Target, schema: T) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return baseZValidator(target as any, schema, (result, c) => {
+  type BaseTarget = Parameters<typeof baseZValidator>[0];
+  return baseZValidator(target as BaseTarget, schema, (result, c) => {
     if (!result.success) {
       const details = result.error.issues
         .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)

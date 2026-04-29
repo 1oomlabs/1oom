@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MarketplaceRouteImport } from './routes/marketplace'
+import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AgentsIndexRouteImport } from './routes/agents.index'
 import { Route as WorkflowsNewRouteImport } from './routes/workflows.new'
 import { Route as WorkflowsIdRouteImport } from './routes/workflows.$id'
 import { Route as AgentsIdRouteImport } from './routes/agents.$id'
@@ -20,10 +22,20 @@ const MarketplaceRoute = MarketplaceRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsRoute = AgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsIndexRoute = AgentsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AgentsRoute,
 } as any)
 const WorkflowsNewRoute = WorkflowsNewRouteImport.update({
   id: '/workflows/new',
@@ -36,17 +48,19 @@ const WorkflowsIdRoute = WorkflowsIdRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsIdRoute = AgentsIdRouteImport.update({
-  id: '/agents/$id',
-  path: '/agents/$id',
-  getParentRoute: () => rootRouteImport,
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AgentsRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/marketplace': typeof MarketplaceRoute
   '/agents/$id': typeof AgentsIdRoute
   '/workflows/$id': typeof WorkflowsIdRoute
   '/workflows/new': typeof WorkflowsNewRoute
+  '/agents/': typeof AgentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,38 +68,51 @@ export interface FileRoutesByTo {
   '/agents/$id': typeof AgentsIdRoute
   '/workflows/$id': typeof WorkflowsIdRoute
   '/workflows/new': typeof WorkflowsNewRoute
+  '/agents': typeof AgentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents': typeof AgentsRouteWithChildren
   '/marketplace': typeof MarketplaceRoute
   '/agents/$id': typeof AgentsIdRoute
   '/workflows/$id': typeof WorkflowsIdRoute
   '/workflows/new': typeof WorkflowsNewRoute
+  '/agents/': typeof AgentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agents'
     | '/marketplace'
     | '/agents/$id'
     | '/workflows/$id'
     | '/workflows/new'
+    | '/agents/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/marketplace' | '/agents/$id' | '/workflows/$id' | '/workflows/new'
-  id:
-    | '__root__'
+  to:
     | '/'
     | '/marketplace'
     | '/agents/$id'
     | '/workflows/$id'
     | '/workflows/new'
+    | '/agents'
+  id:
+    | '__root__'
+    | '/'
+    | '/agents'
+    | '/marketplace'
+    | '/agents/$id'
+    | '/workflows/$id'
+    | '/workflows/new'
+    | '/agents/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsRoute: typeof AgentsRouteWithChildren
   MarketplaceRoute: typeof MarketplaceRoute
-  AgentsIdRoute: typeof AgentsIdRoute
   WorkflowsIdRoute: typeof WorkflowsIdRoute
   WorkflowsNewRoute: typeof WorkflowsNewRoute
 }
@@ -99,12 +126,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents': {
+      id: '/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AgentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/agents/': {
+      id: '/agents/'
+      path: '/'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AgentsIndexRouteImport
+      parentRoute: typeof AgentsRoute
     }
     '/workflows/new': {
       id: '/workflows/new'
@@ -122,18 +163,31 @@ declare module '@tanstack/react-router' {
     }
     '/agents/$id': {
       id: '/agents/$id'
-      path: '/agents/$id'
+      path: '/$id'
       fullPath: '/agents/$id'
       preLoaderRoute: typeof AgentsIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof AgentsRoute
     }
   }
 }
 
+interface AgentsRouteChildren {
+  AgentsIdRoute: typeof AgentsIdRoute
+  AgentsIndexRoute: typeof AgentsIndexRoute
+}
+
+const AgentsRouteChildren: AgentsRouteChildren = {
+  AgentsIdRoute: AgentsIdRoute,
+  AgentsIndexRoute: AgentsIndexRoute,
+}
+
+const AgentsRouteWithChildren =
+  AgentsRoute._addFileChildren(AgentsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsRoute: AgentsRouteWithChildren,
   MarketplaceRoute: MarketplaceRoute,
-  AgentsIdRoute: AgentsIdRoute,
   WorkflowsIdRoute: WorkflowsIdRoute,
   WorkflowsNewRoute: WorkflowsNewRoute,
 }

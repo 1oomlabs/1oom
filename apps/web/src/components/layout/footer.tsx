@@ -1,29 +1,51 @@
-const groups = [
+import { Link } from '@tanstack/react-router';
+
+type RouteHref = '/marketplace' | '/workflows/new' | '/agents';
+
+interface InternalLink {
+  type: 'route';
+  to: RouteHref;
+  label: string;
+}
+
+interface PlaceholderLink {
+  type: 'placeholder';
+  label: string;
+}
+
+type FooterLink = InternalLink | PlaceholderLink;
+
+interface FooterGroup {
+  label: string;
+  links: FooterLink[];
+}
+
+const groups: FooterGroup[] = [
   {
     label: 'Product',
     links: [
-      { href: '/marketplace', label: 'Marketplace' },
-      { href: '/workflows/new', label: 'Create workflow' },
-      { href: '/agents/alice', label: 'Agents' },
+      { type: 'route', to: '/marketplace', label: 'Marketplace' },
+      { type: 'route', to: '/workflows/new', label: 'Create workflow' },
+      { type: 'route', to: '/agents', label: 'Agents' },
     ],
   },
   {
     label: 'Resources',
     links: [
-      { href: '#', label: 'Documentation' },
-      { href: '#', label: 'GitHub' },
-      { href: '#', label: 'Changelog' },
+      { type: 'placeholder', label: 'Documentation' },
+      { type: 'placeholder', label: 'GitHub' },
+      { type: 'placeholder', label: 'Changelog' },
     ],
   },
   {
     label: 'Tracks',
     links: [
-      { href: '#', label: 'KeeperHub' },
-      { href: '#', label: 'ElizaOS' },
-      { href: '#', label: 'Gensyn AXL' },
+      { type: 'placeholder', label: 'KeeperHub' },
+      { type: 'placeholder', label: 'ElizaOS' },
+      { type: 'placeholder', label: 'Gensyn AXL' },
     ],
   },
-] as const;
+];
 
 export function Footer() {
   return (
@@ -46,12 +68,22 @@ export function Footer() {
             <ul className="flex flex-col gap-2 text-sm">
               {g.links.map((l) => (
                 <li key={`${g.label}-${l.label}`}>
-                  <a
-                    href={l.href}
-                    className="text-foreground/80 transition-colors duration-std hover:text-foreground"
-                  >
-                    {l.label}
-                  </a>
+                  {l.type === 'route' ? (
+                    <Link
+                      to={l.to}
+                      className="text-foreground/80 transition-colors duration-std hover:text-foreground"
+                    >
+                      {l.label}
+                    </Link>
+                  ) : (
+                    <span
+                      aria-disabled="true"
+                      className="cursor-default text-muted-foreground/60"
+                      title="Coming soon"
+                    >
+                      {l.label}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

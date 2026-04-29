@@ -5,6 +5,41 @@ import { lidoStakeTemplate } from './lido-stake';
 import { uniswapDcaTemplate } from './uniswap-dca';
 
 export { aaveRecurringDepositTemplate, lidoStakeTemplate, uniswapDcaTemplate };
+export {
+  DRY_RUN_ONLY,
+  HUMAN_CONFIRMED,
+  NEEDS_HUMAN_CONFIRMATION,
+  SEPOLIA_CHAIN_ID,
+  getSepoliaTemplateMetadata,
+  sepoliaTemplateMetadata,
+} from './sepolia-metadata';
+export {
+  TEMPLATE_VALIDATION_ISSUE_CODES,
+  assertTemplatesValidForSepolia,
+  validateTemplatesForSepolia,
+} from './validation';
+export type {
+  SepoliaMetadataMap,
+  TemplateValidationIssue,
+  TemplateValidationIssueCode,
+  TemplateValidationOptions,
+  TemplateValidationResult,
+} from './validation';
+export type {
+  HumanConfirmationStatus,
+  HumanConfirmedStatus,
+  SepoliaAbiMetadata,
+  SepoliaAbiFragment,
+  SepoliaAbiParameter,
+  SepoliaAddressSource,
+  SepoliaContractMetadata,
+  SepoliaDemoParameter,
+  SepoliaLiquidityMetadata,
+  SepoliaRuntimePlaceholderValue,
+  SepoliaTemplateId,
+  SepoliaTemplateMetadata,
+  SepoliaVerificationTarget,
+} from './sepolia-metadata';
 
 /**
  * Central registry of all DeFi automation templates.

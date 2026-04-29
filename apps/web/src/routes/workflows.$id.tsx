@@ -1,27 +1,59 @@
-import { Link, createFileRoute, useParams } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
+import { Loader2 } from 'lucide-react';
 
+import { ErrorState } from '@/components/shared/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { MonoAddress } from '@/components/ui/mono-address';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { StatTile } from '@/components/ui/stat-tile';
-import { workflowDetail } from '@/lib/mock';
+import { useWorkflowDetailVM } from '@/hooks/page/use-workflow-detail-vm';
 
 export const Route: AnyRoute = createFileRoute('/workflows/$id')({
   component: WorkflowDetailPage,
 });
 
 function WorkflowDetailPage() {
-  const { id } = useParams({ from: '/workflows/$id' });
-  const w = workflowDetail; // mock - real impl would key by id
+  const vm = useWorkflowDetailVM();
 
-  const statusVariant: Record<typeof w.status, 'success' | 'warning' | 'destructive'> = {
-    active: 'success',
-    paused: 'warning',
-    error: 'destructive',
-  };
+  if (vm.isLoading) {
+    return (
+      <div className="container-wide py-16 md:py-24">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="mt-6 h-12 w-3/4" />
+        <Skeleton className="mt-3 h-6 w-1/2" />
+        <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-3">
+          <div className="flex flex-col gap-4 lg:col-span-2">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (vm.isError || !vm.workflow) {
+    return (
+      <div className="container-wide py-24">
+        <ErrorState
+          title="Workflow not found"
+          message={vm.error?.message ?? `No workflow with id ${vm.id}`}
+          onRetry={vm.refetch}
+        />
+        <div className="mt-4 flex justify-center">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/marketplace">Back to marketplace</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const { workflow } = vm;
 
   return (
     <div className="container-wide py-16 md:py-24">
@@ -34,101 +66,124 @@ function WorkflowDetailPage() {
 
       <header className="mt-6 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-col gap-3">
-          <Eyebrow tone="muted">Workflow · {id}</Eyebrow>
+          <Eyebrow tone="muted">Workflow · {workflow.id.slice(0, 8)}</Eyebrow>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-balance md:text-5xl">
-            {w.name}
+            {workflow.name}
           </h1>
           <div className="flex flex-wrap items-center gap-3">
-            <Badge variant={statusVariant[w.status]}>{w.status.toUpperCase()}</Badge>
-            <Badge variant="outline">Aave</Badge>
-            <Badge variant="outline">Chain {w.chainId}</Badge>
-            <span className="text-sm text-muted-foreground">{w.trigger}</span>
+            {vm.statusBadgeVariant && (
+              <Badge variant={vm.statusBadgeVariant}>{workflow.status.toUpperCase()}</Badge>
+            )}
+            {vm.protocolLabel && <Badge variant="outline">{vm.protocolLabel}</Badge>}
+            <Badge variant="outline">Chain {workflow.chainId}</Badge>
+            {workflow.trigger.type === 'cron' && (
+              <span className="text-sm text-muted-foreground">
+                cron · {workflow.trigger.expression}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">Pause</Button>
-          <Button variant="accent">Run now</Button>
+          {vm.isPaused ? (
+            <Button
+              variant="outline"
+              onClick={vm.mutations.resume.trigger}
+              disabled={vm.mutations.resume.isPending}
+            >
+              {vm.mutations.resume.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Resume
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={vm.mutations.pause.trigger}
+              disabled={!vm.isDeployed || vm.mutations.pause.isPending}
+            >
+              {vm.mutations.pause.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Pause
+            </Button>
+          )}
+          <Button
+            variant="accent"
+            onClick={vm.mutations.run.trigger}
+            disabled={!vm.canRun || vm.mutations.run.isPending}
+          >
+            {vm.mutations.run.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Run now
+          </Button>
         </div>
       </header>
 
       <div className="mt-12 grid grid-cols-1 gap-12 lg:grid-cols-3">
-        {/* Left: parameters + execution plan */}
         <section className="flex flex-col gap-8 lg:col-span-2">
           <div>
             <Eyebrow tone="muted">Parameters</Eyebrow>
             <div className="mt-4 flex flex-col gap-px overflow-hidden rounded-lg border border-border bg-border">
-              {Object.entries(w.parameters).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between bg-card px-5 py-4">
-                  <span className="text-sm font-medium text-muted-foreground">{k}</span>
-                  <span className="font-mono text-sm tabular text-foreground">{String(v)}</span>
+              {Object.entries(workflow.parameters).length === 0 ? (
+                <div className="bg-card px-5 py-6 text-sm text-muted-foreground">
+                  No parameters.
                 </div>
-              ))}
+              ) : (
+                Object.entries(workflow.parameters).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between bg-card px-5 py-4">
+                    <span className="text-sm font-medium text-muted-foreground">{k}</span>
+                    <span className="font-mono text-sm tabular text-foreground">{String(v)}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
           <div>
-            <Eyebrow tone="muted">Recent runs</Eyebrow>
+            <Eyebrow tone="muted">Actions</Eyebrow>
             <ul className="mt-4 flex flex-col gap-px overflow-hidden rounded-lg border border-border bg-border">
-              {w.recentRuns.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-3 bg-card px-5 py-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full ${
-                        r.status === 'success' ? 'bg-success' : 'bg-destructive'
-                      }`}
-                      aria-hidden
-                    />
-                    <span className="font-mono text-sm tabular">{r.id}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {new Date(r.ranAt).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <MonoAddress address={r.txHash} />
-                    <span className="text-sm tabular text-muted-foreground">${r.gasUsd}</span>
-                  </div>
+              {workflow.actions.map((a, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: actions have no stable id
+                <li key={i} className="flex flex-col gap-1 bg-card px-5 py-4">
+                  <span className="font-mono text-sm">
+                    {a.contract}.{a.method}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    [{a.args.join(', ')}]
+                  </span>
                 </li>
               ))}
             </ul>
           </div>
         </section>
 
-        {/* Right: stats + meta */}
         <aside className="flex flex-col gap-6">
-          <StatTile label="Total runs" value={String(w.recentRuns.length * 12)} />
-          <StatTile
-            label="Success rate"
-            value="96%"
-            delta={{ value: '+1.2%', trend: 'up' }}
-            hint="30d"
-          />
+          <StatTile label="Status" value={workflow.status} />
+          {workflow.keeperJobId ? (
+            <StatTile label="Keeper job" value={workflow.keeperJobId.slice(0, 8)} hint="active" />
+          ) : (
+            <StatTile label="Keeper job" value="—" hint="not deployed" />
+          )}
 
           <Separator />
 
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Author</span>
-              <MonoAddress address={w.parameters.token} />
+              <span className="text-muted-foreground">Owner</span>
+              <MonoAddress address={workflow.owner} />
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Pricing</span>
-              <span>Free</span>
+              <span className="text-muted-foreground">Template</span>
+              <span className="font-mono text-xs">{workflow.templateId}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Created</span>
-              <span className="tabular">2026-04-12</span>
+              <span className="tabular">{new Date(workflow.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
 
-          <Button variant="outline" size="md">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={vm.mutations.fork.trigger}
+            disabled={vm.mutations.fork.isPending}
+          >
+            {vm.mutations.fork.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Fork this workflow
           </Button>
         </aside>
