@@ -122,9 +122,16 @@ function findTemplateCandidates(prompt: string): ReturnType<typeof summarizeTemp
     return [summarizeTemplate(exactIdMatch)];
   }
 
-  const keywordMatches = templates.filter((template) =>
-    template.intentKeywords.some((keyword) => promptLower.includes(keyword.toLowerCase())),
-  );
+  const keywordMatches = templates.filter((template) => {
+    if (template.intentKeywords.some((keyword) => promptLower.includes(keyword.toLowerCase()))) {
+      return true;
+    }
+
+    return (
+      promptLower.includes(template.protocol.toLowerCase()) ||
+      promptLower.includes(template.category.toLowerCase())
+    );
+  });
 
   if (keywordMatches.length > 0) {
     return keywordMatches.map(summarizeTemplate);
