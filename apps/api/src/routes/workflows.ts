@@ -30,13 +30,13 @@ workflowsRouter.post('/', zValidator('json', createWorkflowRequestSchema), async
   const compiled = compileWorkflow({ intent, prompt, owner, chainId });
   log('compile', 'assembled workflow', { name: compiled.name });
 
-  const draft = workflowStore.create(compiled);
+  const draft = await workflowStore.create(compiled);
   log('store', 'saved as draft', { id: draft.id });
 
   const { keeperJobId } = await getKeeperHubClient().deployWorkflow(draft);
   log('keeperhub', 'deployed', { keeperJobId });
 
-  const deployed = workflowStore.update(draft.id, {
+  const deployed = await workflowStore.update(draft.id, {
     keeperJobId,
     status: 'deployed',
   });
@@ -49,13 +49,13 @@ workflowsRouter.post('/', zValidator('json', createWorkflowRequestSchema), async
 });
 
 // 전체 목록 조회 — 데모용 단순 리스트 반환
-workflowsRouter.get('/', (c) => {
-  return c.json({ workflows: workflowStore.list() });
+workflowsRouter.get('/', async (c) => {
+  return c.json({ workflows: await workflowStore.list() });
 });
 
 // 단건 조회 — 없으면 404
-workflowsRouter.get('/:id', (c) => {
-  const workflow = workflowStore.get(c.req.param('id'));
+workflowsRouter.get('/:id', async (c) => {
+  const workflow = await workflowStore.get(c.req.param('id'));
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
   }
@@ -65,7 +65,7 @@ workflowsRouter.get('/:id', (c) => {
 // "Run now" — KeeperHub에 즉시 실행 트리거
 // keeperJobId 없으면 (= deploy 안 된 워크플로우) 409로 거부
 workflowsRouter.post('/:id/run', async (c) => {
-  const workflow = workflowStore.get(c.req.param('id'));
+  const workflow = await workflowStore.get(c.req.param('id'));
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
   }
@@ -86,14 +86,14 @@ workflowsRouter.post('/:id/run', async (c) => {
 // 일시정지 — KeeperHub native 없음, 우리 store status만 'paused'로 마킹
 // (KeeperHub job은 그대로 살아있지만 사용자 가시 상태는 paused)
 workflowsRouter.post('/:id/pause', async (c) => {
-  const workflow = workflowStore.get(c.req.param('id'));
+  const workflow = await workflowStore.get(c.req.param('id'));
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
   }
   if (workflow.keeperJobId) {
     await getKeeperHubClient().pauseJob(workflow.keeperJobId);
   }
-  const updated = workflowStore.update(workflow.id, { status: 'paused' });
+  const updated = await workflowStore.update(workflow.id, { status: 'paused' });
   log('workflows', 'paused', {
     id: workflow.id,
     name: workflow.name,
@@ -106,14 +106,14 @@ workflowsRouter.post('/:id/pause', async (c) => {
 
 // 재개 — pause의 반대. status를 'deployed'로 복귀
 workflowsRouter.post('/:id/resume', async (c) => {
-  const workflow = workflowStore.get(c.req.param('id'));
+  const workflow = await workflowStore.get(c.req.param('id'));
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
   }
   if (workflow.keeperJobId) {
     await getKeeperHubClient().resumeJob(workflow.keeperJobId);
   }
-  const updated = workflowStore.update(workflow.id, { status: 'deployed' });
+  const updated = await workflowStore.update(workflow.id, { status: 'deployed' });
   log('workflows', 'resumed', {
     id: workflow.id,
     name: workflow.name,
@@ -127,13 +127,13 @@ workflowsRouter.post('/:id/resume', async (c) => {
 // 복제 — 같은 파라미터로 새 워크플로우 만들고 KeeperHub에도 새로 등록
 // 새 id, 새 keeperJobId 받아서 독립적으로 동작
 workflowsRouter.post('/:id/fork', async (c) => {
-  const original = workflowStore.get(c.req.param('id'));
+  const original = await workflowStore.get(c.req.param('id'));
   if (!original) {
     return c.json({ error: 'workflow not found' }, 404);
   }
 
   // 원본의 store 관리 필드 빼고 동일한 정의로 새로 생성
-  const draft = workflowStore.create({
+  const draft = await workflowStore.create({
     templateId: original.templateId,
     owner: original.owner,
     name: `${original.name} (fork)`,
@@ -150,7 +150,7 @@ workflowsRouter.post('/:id/fork', async (c) => {
     templateId: original.templateId,
   });
   const { keeperJobId } = await getKeeperHubClient().deployWorkflow(draft);
-  const deployed = workflowStore.update(draft.id, {
+  const deployed = await workflowStore.update(draft.id, {
     keeperJobId,
     status: 'deployed',
   });
@@ -165,10 +165,10 @@ workflowsRouter.post('/:id/fork', async (c) => {
 
 // 삭제 — 우리 store에서만 제거
 // KeeperHub 측 워크플로우는 일단 살려둠 (데모 안정성, 청소는 수동 또는 나중에)
-workflowsRouter.delete('/:id', (c) => {
+workflowsRouter.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  const before = workflowStore.get(id);
-  const ok = workflowStore.delete(id);
+  const before = await workflowStore.get(id);
+  const ok = await workflowStore.delete(id);
   if (!ok) {
     return c.json({ error: 'workflow not found' }, 404);
   }
