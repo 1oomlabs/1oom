@@ -187,6 +187,18 @@ CREATE_WORKFLOW_DEMO
 - `success`, `text`, `data` 포함
 - 실제 transaction 실행 없음
 
+현재 검증된 범위:
+
+- `@elizaos/core` `AgentRuntime` + `InMemoryDatabaseAdapter` 기반 local fixture에서 plugin loading 성공
+- runtime action discovery에 Loomlabs action 5개 노출 확인
+- `BROWSE_TEMPLATES`, `DESCRIBE_TEMPLATE`, `CREATE_WORKFLOW_DEMO`가 실제 `AgentRuntime`을 통해 실행됨
+- fixture의 external fetch 호출 수는 `0`
+
+주의:
+
+- 이 검증은 local in-memory runtime loading 검증입니다.
+- 실제 장기 실행 ElizaOS project/agent 배포 환경은 별도 확인 전까지 `INTEGRATION_RISK`를 유지합니다.
+
 ## ElizaOS action별 계약
 
 ### `BROWSE_TEMPLATES`
@@ -391,6 +403,8 @@ pnpm --filter @loomlabs/plugin-elizaos test
 pnpm lint
 pnpm test
 ```
+
+`pnpm --filter @loomlabs/plugin-elizaos test`는 local smoke test와 실제 `@elizaos/core` `AgentRuntime` loading fixture를 함께 실행합니다.
 
 전체 monorepo typecheck/build는 다른 scope의 상태에 영향을 받을 수 있습니다. Person C 변경 검증은 위 명령을 우선 기준으로 봅니다.
 

@@ -6,6 +6,7 @@ import {
   templates as templateRegistry,
 } from '@loomlabs/templates';
 
+import { runElizaOsRuntimeLoadingTest } from './elizaos-runtime-loading.test';
 import loomPlugin from './index';
 import { runPhase1ElizaOsSmokeTests } from './phase-1-smoke.test';
 
@@ -26,6 +27,7 @@ declare global {
 type RuntimeSmokeResult = {
   actionNames: string[];
   integrationCases: string[];
+  runtimeLoading: Awaited<ReturnType<typeof runElizaOsRuntimeLoadingTest>>;
   phase1Passed: number;
 };
 
@@ -408,9 +410,13 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     integrationCases.push(`CREATE_WORKFLOW_DEMO maps "${prompt}"`);
   }
 
+  const runtimeLoading = await runElizaOsRuntimeLoadingTest();
+  integrationCases.push(...runtimeLoading.runtimeCases);
+
   return {
     actionNames,
     integrationCases,
+    runtimeLoading,
     phase1Passed: phase1.passed.length,
   };
 }
