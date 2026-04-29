@@ -18,16 +18,20 @@ export interface AgentProfileVM {
   stats: AgentProfileStats;
 }
 
+export const agentTag = (id: string): string => `agent:${id}`;
+
 export function useAgentProfileVM(): AgentProfileVM {
   const { id } = useParams({ from: '/agents/$id' });
   const { data: agent, isLoading, isError } = useAgent(id);
-  const { data: listings, isLoading: loadingListings } = useMarketplaceList();
+  const { data: marketListings, isLoading: loadingListings } = useMarketplaceList();
 
-  const safeListings = listings ?? [];
+  const tag = agentTag(id);
+  const listings = (marketListings ?? []).filter((l) => l.tags.includes(tag));
+
   const stats: AgentProfileStats = {
-    totalListings: safeListings.length,
-    totalRuns: safeListings.reduce((sum, l) => sum + l.stats.runs, 0),
-    totalInstalls: safeListings.reduce((sum, l) => sum + l.stats.installs, 0),
+    totalListings: listings.length,
+    totalRuns: listings.reduce((sum, l) => sum + l.stats.runs, 0),
+    totalInstalls: listings.reduce((sum, l) => sum + l.stats.installs, 0),
   };
 
   return {
@@ -35,7 +39,7 @@ export function useAgentProfileVM(): AgentProfileVM {
     isLoading,
     isError,
     agent,
-    listings: safeListings,
+    listings,
     loadingListings,
     stats,
   };

@@ -9,6 +9,8 @@ import {
   useInvalidateMarketplace,
   usePublishToMarketplace,
 } from '@/api';
+import { agentTag } from '@/hooks/page/use-agent-profile-vm';
+import { CURRENT_AGENT_ID, DEFAULT_PUBLISH_PRICING } from '@/lib/constants';
 import { protocolFromTemplateId } from '@/lib/view-models';
 import { DEFAULT_CHAIN_ID } from '@/lib/wagmi';
 import { useDraftStore } from '@/store/draft-store';
@@ -72,13 +74,14 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
       toast.success('Workflow deployed', `Job ${workflow.id.slice(0, 8)} on KeeperHub`);
 
       // 백엔드 스키마대로 marketplace publish 연결 (기본 free)
+      // agent:<id> 태그를 함께 붙여 agent profile 페이지 필터에 잡히게 함
       if (address) {
         const protocol = protocolFromTemplateId(workflow.templateId);
         publish.mutate({
           workflowId: workflow.id,
           author: address,
-          tags: [protocol, workflow.templateId],
-          pricing: { type: 'free' },
+          tags: [protocol, workflow.templateId, agentTag(CURRENT_AGENT_ID)],
+          pricing: DEFAULT_PUBLISH_PRICING,
         });
       }
 
