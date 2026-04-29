@@ -29,6 +29,7 @@ export type LoomPlugin = Plugin & {
   executionMode: typeof DRY_RUN_ONLY;
   safety: {
     forbiddenRuntimeRequirements: readonly string[];
+    blockedExternalCalls: readonly string[];
     noProductionExecutionTerms: readonly string[];
   };
   actions: LoomAction[];
@@ -39,7 +40,22 @@ type DemoWorkflowCandidate = {
   executionMode: typeof DRY_RUN_ONLY;
   integrationRisk: typeof INTEGRATION_RISK;
   safety: ReturnType<typeof dryRunSafetyPayload>;
+  templateId: string;
+  templateName: string;
+  protocol: string;
+  category: string;
+  description: string;
+  chainId: number | null;
+  network: string | null;
+  parameters: Record<string, unknown>;
+  trigger: ReturnType<typeof summarizeTemplate>['trigger'];
+  actions: ReturnType<typeof summarizeTemplate>['actions'];
+  runtimePlaceholderValues: NonNullable<
+    ReturnType<typeof summarizeTemplate>['sepolia']
+  >['runtimePlaceholderValues'];
+  contracts: NonNullable<ReturnType<typeof summarizeTemplate>['sepolia']>['contracts'];
   intent: DemoIntent;
+  workflowDraft: DryRunWorkflowDraft;
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
 };
@@ -49,6 +65,23 @@ type DemoIntent = {
   confidence: number;
   parameters: Record<string, unknown>;
   reasoning: string;
+};
+
+type DryRunWorkflowDraft = {
+  templateId: string;
+  chainId: number | null;
+  network: string | null;
+  executionMode: typeof DRY_RUN_ONLY;
+  parameters: Record<string, unknown>;
+  trigger: ReturnType<typeof summarizeTemplate>['trigger'];
+  actions: ReturnType<typeof summarizeTemplate>['actions'];
+  runtimePlaceholderValues: NonNullable<
+    ReturnType<typeof summarizeTemplate>['sepolia']
+  >['runtimePlaceholderValues'];
+  contracts: NonNullable<ReturnType<typeof summarizeTemplate>['sepolia']>['contracts'];
+  unsupportedOperations: string[];
+  deployStatus: 'dry-run-not-submitted';
+  deployBlockedBy: string[];
 };
 
 function getMessageText(message: Memory): string {
@@ -189,17 +222,45 @@ function demoUnsupportedOperations(candidates: ReturnType<typeof summarizeTempla
 function dryRunSafetyPayload() {
   return {
     canExecuteTransactions: false,
+    callsKeeperHub: false,
+    callsExternalLlm: false,
+    callsAppApi: false,
     requiresSigner: false,
     requiresRpc: false,
     requiresWallet: false,
     requiresPrivateKey: false,
+    requiresApiKey: false,
     executionBlockedBy: [
       'dry-run-only',
       'no-signer',
       'no-rpc',
       'no-wallet',
       'no-transaction-broadcast',
+      'no-keeperhub-deploy',
+      'no-llm-api-call',
+      'no-app-api-call',
     ],
+  };
+}
+
+function createDryRunWorkflowDraft(
+  template: ReturnType<typeof summarizeTemplate>,
+  intent: DemoIntent,
+  unsupportedOperations: string[],
+): DryRunWorkflowDraft {
+  return {
+    templateId: template.id,
+    chainId: template.sepolia?.chainId ?? null,
+    network: template.sepolia?.network ?? null,
+    executionMode: DRY_RUN_ONLY,
+    parameters: intent.parameters,
+    trigger: template.trigger,
+    actions: template.actions,
+    runtimePlaceholderValues: template.sepolia?.runtimePlaceholderValues ?? [],
+    contracts: template.sepolia?.contracts ?? [],
+    unsupportedOperations,
+    deployStatus: 'dry-run-not-submitted',
+    deployBlockedBy: ['keeperhub-deploy', 'api-deploy', 'real-transaction-execution'],
   };
 }
 
@@ -208,22 +269,55 @@ async function createDryRunWorkflowCandidate(message: {
 }): Promise<DemoWorkflowCandidate> {
   const templateCandidates = findTemplateCandidates(message.text);
   const intent = inferDemoIntent(message.text, templateCandidates);
+  const primaryCandidate = templateCandidates[0];
+  const fallbackTemplate = templates[0];
+  const workflowTemplate =
+    primaryCandidate ?? (fallbackTemplate ? summarizeTemplate(fallbackTemplate) : undefined);
+  const unsupportedOperations = demoUnsupportedOperations(templateCandidates);
+
+  if (!workflowTemplate) {
+    throw new Error('Template registry must expose at least one template.');
+  }
 
   return {
     ok: true,
     executionMode: DRY_RUN_ONLY,
     integrationRisk: INTEGRATION_RISK,
     safety: dryRunSafetyPayload(),
+    templateId: workflowTemplate.id,
+    templateName: workflowTemplate.name,
+    protocol: workflowTemplate.protocol,
+    category: workflowTemplate.category,
+    description: workflowTemplate.description,
+    chainId: workflowTemplate.sepolia?.chainId ?? null,
+    network: workflowTemplate.sepolia?.network ?? null,
+    parameters: intent.parameters,
+    trigger: workflowTemplate.trigger,
+    actions: workflowTemplate.actions,
+    runtimePlaceholderValues: workflowTemplate.sepolia?.runtimePlaceholderValues ?? [],
+    contracts: workflowTemplate.sepolia?.contracts ?? [],
     intent,
+    workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
     templateCandidates,
-    unsupportedOperations: demoUnsupportedOperations(templateCandidates),
+    unsupportedOperations,
   };
 }
 
-function createActionResult(text: string, data: DemoWorkflowCandidate): ActionResult {
+function createDryRunWorkflowText(data: DemoWorkflowCandidate): string {
+  const blockedOperations = data.unsupportedOperations.slice(0, 3).join(', ');
+
+  return [
+    `Selected ${data.templateId} (${data.templateName}) for ${data.protocol}/${data.category}.`,
+    `Mode: ${data.executionMode} on ${data.network ?? 'unknown-network'}.`,
+    `Execution is unavailable because ${blockedOperations}.`,
+    'No transaction was executed.',
+  ].join(' ');
+}
+
+function createActionResult(data: DemoWorkflowCandidate): ActionResult {
   return {
     success: data.ok,
-    text,
+    text: createDryRunWorkflowText(data),
     data: data as unknown as NonNullable<ActionResult['data']>,
   };
 }
@@ -264,10 +358,7 @@ export const createWorkflowAction: LoomAction = {
   description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
   validate: validateDryRunAction,
   handler: async (_runtime, message) =>
-    createActionResult(
-      'Created a dry-run workflow candidate. No transaction was executed.',
-      await createDryRunWorkflowCandidate({ text: getMessageText(message) }),
-    ),
+    createActionResult(await createDryRunWorkflowCandidate({ text: getMessageText(message) })),
 };
 
 export const browseMarketplaceAction: LoomAction = {
@@ -343,7 +434,6 @@ export const createWorkflowDemoAction: LoomAction = {
   validate: validateDryRunAction,
   handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
     createActionResult(
-      'Created a dry-run demo workflow candidate. No transaction was executed.',
       await createDryRunWorkflowCandidate({
         text: getPromptOption(options) ?? getMessageText(message),
       }),
@@ -356,7 +446,8 @@ export const loomPlugin: LoomPlugin = {
   integrationRisk: INTEGRATION_RISK,
   executionMode: DRY_RUN_ONLY,
   safety: {
-    forbiddenRuntimeRequirements: ['signer', 'rpcUrl', 'wallet', 'privateKey'],
+    forbiddenRuntimeRequirements: ['signer', 'rpcUrl', 'wallet', 'privateKey', 'apiKey'],
+    blockedExternalCalls: ['keeperhub-deploy', 'llm-api-call', 'apps-api-call'],
     noProductionExecutionTerms: [],
   },
   actions: [
