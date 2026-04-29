@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { Outlet, createRootRouteWithContext } from '@tanstack/react-router';
-import { TanStackRouterDevtools } from '@tanstack/router-devtools';
+import { Suspense, lazy } from 'react';
 
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
@@ -14,6 +14,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
 });
 
+const TanStackRouterDevtools = import.meta.env.DEV
+  ? lazy(() =>
+      import('@tanstack/router-devtools').then((m) => ({ default: m.TanStackRouterDevtools })),
+    )
+  : null;
+
 function RootComponent() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -23,7 +29,11 @@ function RootComponent() {
       </main>
       <Footer />
       <Toaster />
-      <TanStackRouterDevtools position="bottom-right" />
+      {TanStackRouterDevtools && (
+        <Suspense fallback={null}>
+          <TanStackRouterDevtools position="bottom-right" />
+        </Suspense>
+      )}
     </div>
   );
 }
