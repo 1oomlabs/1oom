@@ -187,6 +187,45 @@ CREATE_WORKFLOW_DEMO
 - `success`, `text`, `data` 포함
 - 실제 transaction 실행 없음
 
+## Gensyn AXL dry-run flow
+
+현재 AXL 연동은 **additive-only dry-run metadata**입니다. 기존 API,
+contracts, schema를 호출하거나 변경하지 않고, ElizaOS action 응답에 후속 AXL
+전송/발견 단계가 참고할 수 있는 draft를 추가합니다.
+
+공식 AXL node는 local HTTP API를 통해 P2P mesh에 접근합니다. 이 plugin은
+해당 API를 호출하지 않고, 아래 endpoint에 대응되는 envelope shape만 만듭니다.
+
+```ts
+GET /topology
+POST /send
+GET /recv
+POST /mcp/{peer_id}/{service}
+POST /a2a/{peer_id}
+```
+
+추가 응답 필드:
+
+```ts
+data.axlFlow
+data.registryHints
+data.onchainPublishDraft
+data.axlEnvelopeDraft
+```
+
+의미:
+
+- `axlFlow`: AXL transport와 dry-run 차단 사유
+- `registryHints`: `MarketplaceRegistry.register(bytes32,string)`와 curator flow 힌트
+- `onchainPublishDraft`: canonical workflow JSON의 `keccak256` hash와 registry URI
+- `axlEnvelopeDraft`: AXL `/send` raw message로 보낼 수 있는 draft envelope
+
+주의:
+
+- 실제 AXL node 실행, peer discovery, `/send` 호출은 하지 않습니다.
+- 실제 `MarketplaceRegistry` transaction broadcast는 하지 않습니다.
+- API/schema/contracts wiring은 후속 enhance 브랜치에서 다룹니다.
+
 현재 검증된 범위:
 
 - `@elizaos/core` `AgentRuntime` + `InMemoryDatabaseAdapter` 기반 local fixture에서 plugin loading 성공
@@ -371,6 +410,8 @@ data.safety
 - `source: 'local-demo-registry'`
 - `pricing.type: 'free'`
 - template 기본 필드 유지
+- top-level `axlFlow`, `registryHints`, `axlEnvelopeDraft` 제공
+- 각 item에 `registryHints`, `onchainPublishDraft`, `axlEnvelopeDraft` 제공
 
 ### `CREATE_WORKFLOW`
 
@@ -411,6 +452,14 @@ data.safety
 
 ```ts
 workflowDraft.deployStatus === 'dry-run-not-submitted'
+```
+
+AXL 관련 draft도 같은 원칙을 따릅니다.
+
+```ts
+onchainPublishDraft.expectedStatus === 'Pending'
+onchainPublishDraft.author === 'runtime-signer-required'
+axlEnvelopeDraft.transport === 'axl.raw'
 ```
 
 다른 팀이 실제 실행을 붙이려면 먼저 live execution 설계를 별도 문서로 확정해야 합니다.

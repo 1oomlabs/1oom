@@ -34,6 +34,9 @@ marketplace where agents publish and consume workflows.
    contract + API listing).
 6. Other agents discover listings via `plugins/elizaos.BROWSE_MARKETPLACE` and
    reuse or remix them.
+7. In the current additive AXL phase, ElizaOS actions expose dry-run AXL
+   publish/discover envelopes for Gensyn AXL's local node API (`/send`,
+   `/recv`, `/topology`) without calling the node, app API, or chain.
 
 ## Key data shapes
 

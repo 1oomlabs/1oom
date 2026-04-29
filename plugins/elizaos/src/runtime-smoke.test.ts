@@ -65,6 +65,48 @@ type MarketplaceItemSummary = {
   template?: TemplateSummary;
   pricing?: { type?: string };
   source?: string;
+  registryHints?: RegistryHintsSummary;
+  onchainPublishDraft?: OnchainPublishDraftSummary;
+  axlEnvelopeDraft?: AxlEnvelopeDraftSummary;
+};
+
+type AxlFlowSummary = {
+  protocol?: string;
+  mode?: string;
+  transport?: string;
+  nodeApi?: Record<string, string>;
+  blockedBy?: string[];
+};
+
+type RegistryHintsSummary = {
+  contract?: string;
+  registerFunction?: string;
+  curationFlow?: string;
+  contentHashAlgorithm?: string;
+};
+
+type OnchainPublishDraftSummary = {
+  contentHash?: string;
+  uri?: string;
+  expectedStatus?: string;
+  author?: string;
+  registerCall?: {
+    contract?: string;
+    functionName?: string;
+    args?: unknown[];
+  };
+  blockedBy?: string[];
+};
+
+type AxlEnvelopeDraftSummary = {
+  version?: string;
+  kind?: string;
+  transport?: string;
+  route?: Record<string, string>;
+  payload?: {
+    contentHash?: string;
+    uri?: string;
+  };
 };
 
 const marketplaceTemplateFields = [
@@ -205,6 +247,53 @@ function assertDryRunWorkflowDraft(
   );
 }
 
+function assertAxlFlowMetadata(actionName: string, data: Record<string, unknown>): void {
+  const flow = data.axlFlow as AxlFlowSummary | undefined;
+  const registryHints = data.registryHints as RegistryHintsSummary | undefined;
+
+  assert(flow, `${actionName} must expose axlFlow`);
+  assert(flow.protocol === 'gensyn-axl', `${actionName} axlFlow protocol must be gensyn-axl`);
+  assert(flow.mode === 'dry-run-only', `${actionName} axlFlow must stay dry-run-only`);
+  assert(flow.transport === 'raw-message', `${actionName} axlFlow must use raw-message`);
+  assert(flow.nodeApi?.send === 'POST /send', `${actionName} must document AXL /send`);
+  assert(flow.nodeApi?.recv === 'GET /recv', `${actionName} must document AXL /recv`);
+  assert(flow.nodeApi?.topology === 'GET /topology', `${actionName} must document topology`);
+  assert(flow.nodeApi?.a2a === 'POST /a2a/{peer_id}', `${actionName} must document A2A`);
+  assert(flow.blockedBy?.includes('dry-run-only'), `${actionName} must block live AXL calls`);
+
+  assert(registryHints, `${actionName} must expose registryHints`);
+  assert(
+    registryHints.contract === 'MarketplaceRegistry',
+    `${actionName} registryHints must target MarketplaceRegistry`,
+  );
+  assert(
+    registryHints.registerFunction === 'register(bytes32,string)',
+    `${actionName} must describe register call`,
+  );
+  assert(
+    registryHints.contentHashAlgorithm === 'keccak256(canonical workflow JSON)',
+    `${actionName} must describe content hash algorithm`,
+  );
+}
+
+function assertOnchainPublishDraft(actionName: string, draft: OnchainPublishDraftSummary): void {
+  assert(/^0x[0-9a-f]{64}$/i.test(draft.contentHash ?? ''), `${actionName} needs bytes32 hash`);
+  assert(draft.uri?.startsWith('loom://workflow/'), `${actionName} needs loom workflow URI`);
+  assert(draft.expectedStatus === 'Pending', `${actionName} must create pending draft`);
+  assert(draft.author === 'runtime-signer-required', `${actionName} must require runtime author`);
+  assert(draft.registerCall?.contract === 'MarketplaceRegistry', `${actionName} call contract`);
+  assert(draft.registerCall?.functionName === 'register', `${actionName} call function`);
+  assert(draft.registerCall?.args?.length === 2, `${actionName} register args`);
+  assert(draft.blockedBy?.includes('no-transaction-broadcast'), `${actionName} blocks broadcast`);
+}
+
+function assertAxlEnvelopeDraft(actionName: string, draft: AxlEnvelopeDraftSummary): void {
+  assert(draft.version === 'loomlabs.axl.v1', `${actionName} envelope version`);
+  assert(draft.transport === 'axl.raw', `${actionName} envelope transport`);
+  assert(draft.route?.sendEndpoint === '/send', `${actionName} envelope send endpoint`);
+  assert(draft.route?.recvEndpoint === '/recv', `${actionName} envelope recv endpoint`);
+}
+
 function assertDemoResponseQuality(
   result: ActionResult | undefined,
   expectedTemplateId: string,
@@ -237,6 +326,12 @@ function assertDemoResponseQuality(
     JSON.stringify(data.actions) === JSON.stringify(draft.actions),
     'normalized actions must match workflowDraft',
   );
+  assertAxlFlowMetadata('CREATE_WORKFLOW_DEMO', data);
+  assertOnchainPublishDraft(
+    'CREATE_WORKFLOW_DEMO',
+    data.onchainPublishDraft as OnchainPublishDraftSummary,
+  );
+  assertAxlEnvelopeDraft('CREATE_WORKFLOW_DEMO', data.axlEnvelopeDraft as AxlEnvelopeDraftSummary);
 }
 
 function assertMarketplaceTemplateFields(template: TemplateSummary, label: string): void {
@@ -373,6 +468,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   );
   assertActionResult('BROWSE_MARKETPLACE integration', marketplaceResult);
   assertDryRunSafety('BROWSE_MARKETPLACE integration', marketplaceResult);
+  assertAxlFlowMetadata('BROWSE_MARKETPLACE integration', getDataRecord(marketplaceResult));
 
   const marketplaceItems = getMarketplaceItems(marketplaceResult);
   assertTemplateIds(
@@ -388,6 +484,11 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     assert(item.pricing?.type === 'free', `${item.id} must remain free in the demo registry`);
     assert(item.template, `${item.id} must expose template data`);
     assertMarketplaceTemplateFields(item.template, item.id);
+    assert(item.registryHints, `${item.id} must expose registry hints`);
+    assert(item.onchainPublishDraft, `${item.id} must expose publish draft`);
+    assert(item.axlEnvelopeDraft, `${item.id} must expose AXL envelope draft`);
+    assertOnchainPublishDraft(item.id, item.onchainPublishDraft);
+    assertAxlEnvelopeDraft(item.id, item.axlEnvelopeDraft);
   }
 
   integrationCases.push('BROWSE_MARKETPLACE exposes marketplace-safe template fields');

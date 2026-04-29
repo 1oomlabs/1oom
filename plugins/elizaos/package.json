@@ -20,6 +20,7 @@
     "@loomlabs/llm": "workspace:*",
     "@loomlabs/schema": "workspace:*",
     "@loomlabs/templates": "workspace:*",
+    "viem": "^2.48.4",
     "zod": "^3.24.1"
   },
   "peerDependencies": {
