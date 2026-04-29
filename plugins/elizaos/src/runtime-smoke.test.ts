@@ -205,6 +205,40 @@ function assertDryRunWorkflowDraft(
   );
 }
 
+function assertDemoResponseQuality(
+  result: ActionResult | undefined,
+  expectedTemplateId: string,
+): void {
+  const data = getDataRecord(result);
+  const text = result?.text ?? '';
+  const draft = getWorkflowDraft(result);
+
+  assert(text.includes(expectedTemplateId), 'demo text must include selected template ID');
+  assert(text.includes('dry-run-only'), 'demo text must explain dry-run mode');
+  assert(text.includes('unavailable'), 'demo text must explain execution is unavailable');
+  assert(data.templateId === expectedTemplateId, 'data.templateId must be normalized');
+  assert(data.chainId === 11155111, 'data.chainId must be normalized');
+  assert(data.network === 'sepolia', 'data.network must be normalized');
+  assert(data.parameters && typeof data.parameters === 'object', 'data.parameters must exist');
+  assert(Array.isArray(data.actions), 'data.actions must be normalized');
+  assert(Array.isArray(data.runtimePlaceholderValues), 'runtime placeholders must be normalized');
+  assert(Array.isArray(data.contracts), 'data.contracts must be normalized');
+  assert(Array.isArray(data.unsupportedOperations), 'unsupportedOperations must be normalized');
+  assert(
+    (data.unsupportedOperations as string[]).includes('keeperhub-deploy'),
+    'unsupportedOperations must block KeeperHub deploy',
+  );
+  assert(data.safety && typeof data.safety === 'object', 'data.safety must be normalized');
+  assert(
+    JSON.stringify(data.parameters) === JSON.stringify(draft.parameters),
+    'normalized parameters must match workflowDraft',
+  );
+  assert(
+    JSON.stringify(data.actions) === JSON.stringify(draft.actions),
+    'normalized actions must match workflowDraft',
+  );
+}
+
 function assertMarketplaceTemplateFields(template: TemplateSummary, label: string): void {
   const record = template as Record<string, unknown>;
 
@@ -407,6 +441,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
       `${prompt} must include ${expectedTemplateId}`,
     );
     assertDryRunWorkflowDraft(result, expectedTemplateId);
+    assertDemoResponseQuality(result, expectedTemplateId);
     integrationCases.push(`CREATE_WORKFLOW_DEMO maps "${prompt}"`);
   }
 

@@ -40,6 +40,20 @@ type DemoWorkflowCandidate = {
   executionMode: typeof DRY_RUN_ONLY;
   integrationRisk: typeof INTEGRATION_RISK;
   safety: ReturnType<typeof dryRunSafetyPayload>;
+  templateId: string;
+  templateName: string;
+  protocol: string;
+  category: string;
+  description: string;
+  chainId: number | null;
+  network: string | null;
+  parameters: Record<string, unknown>;
+  trigger: ReturnType<typeof summarizeTemplate>['trigger'];
+  actions: ReturnType<typeof summarizeTemplate>['actions'];
+  runtimePlaceholderValues: NonNullable<
+    ReturnType<typeof summarizeTemplate>['sepolia']
+  >['runtimePlaceholderValues'];
+  contracts: NonNullable<ReturnType<typeof summarizeTemplate>['sepolia']>['contracts'];
   intent: DemoIntent;
   workflowDraft: DryRunWorkflowDraft;
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
@@ -270,6 +284,18 @@ async function createDryRunWorkflowCandidate(message: {
     executionMode: DRY_RUN_ONLY,
     integrationRisk: INTEGRATION_RISK,
     safety: dryRunSafetyPayload(),
+    templateId: workflowTemplate.id,
+    templateName: workflowTemplate.name,
+    protocol: workflowTemplate.protocol,
+    category: workflowTemplate.category,
+    description: workflowTemplate.description,
+    chainId: workflowTemplate.sepolia?.chainId ?? null,
+    network: workflowTemplate.sepolia?.network ?? null,
+    parameters: intent.parameters,
+    trigger: workflowTemplate.trigger,
+    actions: workflowTemplate.actions,
+    runtimePlaceholderValues: workflowTemplate.sepolia?.runtimePlaceholderValues ?? [],
+    contracts: workflowTemplate.sepolia?.contracts ?? [],
     intent,
     workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
     templateCandidates,
@@ -277,10 +303,21 @@ async function createDryRunWorkflowCandidate(message: {
   };
 }
 
-function createActionResult(text: string, data: DemoWorkflowCandidate): ActionResult {
+function createDryRunWorkflowText(data: DemoWorkflowCandidate): string {
+  const blockedOperations = data.unsupportedOperations.slice(0, 3).join(', ');
+
+  return [
+    `Selected ${data.templateId} (${data.templateName}) for ${data.protocol}/${data.category}.`,
+    `Mode: ${data.executionMode} on ${data.network ?? 'unknown-network'}.`,
+    `Execution is unavailable because ${blockedOperations}.`,
+    'No transaction was executed.',
+  ].join(' ');
+}
+
+function createActionResult(data: DemoWorkflowCandidate): ActionResult {
   return {
     success: data.ok,
-    text,
+    text: createDryRunWorkflowText(data),
     data: data as unknown as NonNullable<ActionResult['data']>,
   };
 }
@@ -321,10 +358,7 @@ export const createWorkflowAction: LoomAction = {
   description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
   validate: validateDryRunAction,
   handler: async (_runtime, message) =>
-    createActionResult(
-      'Created a dry-run workflow candidate. No transaction was executed.',
-      await createDryRunWorkflowCandidate({ text: getMessageText(message) }),
-    ),
+    createActionResult(await createDryRunWorkflowCandidate({ text: getMessageText(message) })),
 };
 
 export const browseMarketplaceAction: LoomAction = {
@@ -400,7 +434,6 @@ export const createWorkflowDemoAction: LoomAction = {
   validate: validateDryRunAction,
   handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
     createActionResult(
-      'Created a dry-run demo workflow candidate. No transaction was executed.',
       await createDryRunWorkflowCandidate({
         text: getPromptOption(options) ?? getMessageText(message),
       }),

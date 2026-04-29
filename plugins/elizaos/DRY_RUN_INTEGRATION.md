@@ -285,10 +285,28 @@ stake ETH with Lido
 ```ts
 {
   success: true,
-  text: 'Created a dry-run demo workflow candidate. No transaction was executed.',
+  text: 'Selected lido-stake (Lido ETH Stake) for lido/staking. Mode: dry-run-only on sepolia. Execution is unavailable because api-deploy, contract-deployment, keeperhub-deploy. No transaction was executed.',
   data: {
     ok: true,
     executionMode: 'dry-run-only',
+    templateId: 'lido-stake',
+    templateName: 'Lido ETH Stake',
+    protocol: 'lido',
+    category: 'staking',
+    chainId: 11155111,
+    network: 'sepolia',
+    parameters: {},
+    actions: [],
+    runtimePlaceholderValues: [],
+    contracts: [],
+    safety: {
+      callsKeeperHub: false,
+      callsExternalLlm: false,
+      callsAppApi: false,
+      requiresApiKey: false,
+      requiresSigner: false,
+      requiresRpc: false
+    },
     intent: {
       templateId: 'lido-stake',
       confidence: 0.85,
@@ -325,6 +343,21 @@ stake ETH with Lido
   }
 }
 ```
+
+후속 시스템은 우선 아래 top-level 필드를 사용하면 됩니다.
+
+```ts
+data.templateId
+data.chainId
+data.parameters
+data.actions
+data.runtimePlaceholderValues
+data.contracts
+data.unsupportedOperations
+data.safety
+```
+
+`data.workflowDraft`는 위 필드를 묶은 dry-run 제출 후보이며, 실제 제출 상태는 아닙니다.
 
 ### `BROWSE_MARKETPLACE`
 
