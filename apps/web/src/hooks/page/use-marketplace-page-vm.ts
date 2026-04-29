@@ -48,7 +48,7 @@ export function useMarketplacePageVM(): MarketplacePageVM {
 
   const updateSearch = (patch: Partial<MarketplaceSearch>) => {
     void navigate({
-      search: (prev) => ({ ...prev, ...patch }),
+      search: (prev: MarketplaceSearch) => ({ ...prev, ...patch }),
       replace: true,
     });
   };

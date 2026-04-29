@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 
 import { ErrorState } from '@/components/shared/error-state';
@@ -11,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatTile } from '@/components/ui/stat-tile';
 import { useWorkflowDetailVM } from '@/hooks/page/use-workflow-detail-vm';
 
-export const Route = createFileRoute('/workflows/$id')({
+export const Route: AnyRoute = createFileRoute('/workflows/$id')({
   component: WorkflowDetailPage,
 });
 

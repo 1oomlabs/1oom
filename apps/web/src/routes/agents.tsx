@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
 
-export const Route = createFileRoute('/agents')({
+export const Route: AnyRoute = createFileRoute('/agents')({
   component: AgentsLayout,
 });
 

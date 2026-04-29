@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { LoadingGrid } from '@/components/shared/loading-grid';
@@ -11,7 +12,7 @@ import { WorkflowCard } from '@/components/ui/workflow-card';
 import { promptExamples, useHomePageVM } from '@/hooks/page/use-home-page-vm';
 import { listingToCard } from '@/lib/view-models';
 
-export const Route = createFileRoute('/')({
+export const Route: AnyRoute = createFileRoute('/')({
   component: HomePage,
 });
 

@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
 import { Loader2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { ConnectWalletButton } from '@/components/wallet/connect-wallet-button';
 import { useWorkflowBuilderVM } from '@/hooks/page/use-workflow-builder-vm';
 
-export const Route = createFileRoute('/workflows/new')({
+export const Route: AnyRoute = createFileRoute('/workflows/new')({
   component: WorkflowBuilderPage,
 });
 

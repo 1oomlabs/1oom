@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
@@ -14,7 +15,7 @@ import { WorkflowCard } from '@/components/ui/workflow-card';
 import { useAgentProfileVM } from '@/hooks/page/use-agent-profile-vm';
 import { listingToCard } from '@/lib/view-models';
 
-export const Route = createFileRoute('/agents/$id')({
+export const Route: AnyRoute = createFileRoute('/agents/$id')({
   component: AgentProfilePage,
 });
 
