@@ -137,10 +137,15 @@ const unconfirmedProtocolAddress = (): SepoliaAddressSource => ({
   confirmation: NEEDS_HUMAN_CONFIRMATION,
 });
 
-const unconfirmedMockAddress = (mockContract: string): SepoliaAddressSource => ({
+const mockAddress = (
+  value: SepoliaAddress,
+  source: string,
+  mockContract: string,
+): SepoliaAddressSource => ({
   kind: 'mock-address',
-  value: NEEDS_HUMAN_CONFIRMATION,
-  confirmation: NEEDS_HUMAN_CONFIRMATION,
+  value,
+  confirmation: HUMAN_CONFIRMED,
+  source,
   mockContract,
 });
 
@@ -439,11 +444,15 @@ export const sepoliaTemplateMetadata = {
     network: 'sepolia',
     executionMode: DRY_RUN_ONLY,
     demoOnly: true,
-    requiresHumanConfirmation: true,
+    requiresHumanConfirmation: false,
     contracts: [
       {
         contract: 'MockLido',
-        address: unconfirmedMockAddress('MockLido'),
+        address: mockAddress(
+          '0x800AB7B237F8Bf9639c0E9127756a5b9049D0C73',
+          'Human-provided Sepolia MockLido deployment',
+          'MockLido',
+        ),
         requiredMethods: ['submit'],
         abi: confirmedAbi(
           mockLidoAbiFragments,
@@ -452,7 +461,11 @@ export const sepoliaTemplateMetadata = {
       },
       {
         contract: 'MockStETH',
-        address: unconfirmedMockAddress('MockStETH'),
+        address: mockAddress(
+          '0xE1264e5AADb69A27bE594aaafc502D654FFbaC97',
+          'Human-provided Sepolia MockStETH deployment',
+          'MockStETH',
+        ),
         requiredMethods: ['balanceOf', 'approve', 'allowance', 'decimals', 'symbol'],
         abi: confirmedAbi(
           erc20AbiFragments,
@@ -461,7 +474,11 @@ export const sepoliaTemplateMetadata = {
       },
       {
         contract: 'MockWstETH',
-        address: unconfirmedMockAddress('MockWstETH'),
+        address: mockAddress(
+          '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+          'Human-provided Sepolia MockWstETH deployment',
+          'MockWstETH',
+        ),
         requiredMethods: ['wrap', 'unwrap', 'balanceOf', 'decimals', 'symbol'],
         abi: confirmedAbi(
           mockWstEthAbiFragments,
@@ -470,7 +487,14 @@ export const sepoliaTemplateMetadata = {
       },
     ],
     runtimePlaceholders: ['$MOCK_WSTETH'],
-    runtimePlaceholderValues: [],
+    runtimePlaceholderValues: [
+      {
+        placeholder: '$MOCK_WSTETH',
+        value: '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+        confirmation: HUMAN_CONFIRMED,
+        source: 'Human-provided Sepolia MockWstETH deployment',
+      },
+    ],
     demoParameters: [
       {
         name: 'stETHDecimals',
@@ -492,12 +516,7 @@ export const sepoliaTemplateMetadata = {
       },
     ],
     verificationTargets: [],
-    unresolvedHumanConfirmations: [
-      'MockLido Sepolia deployment address',
-      'MockStETH Sepolia deployment address',
-      'MockWstETH Sepolia deployment address',
-      '$MOCK_WSTETH runtime placeholder value',
-    ],
+    unresolvedHumanConfirmations: [],
     unsupportedOperations: [
       'rpc-call',
       'signer-required',
