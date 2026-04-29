@@ -1,4 +1,10 @@
 import type { ActionResult, IAgentRuntime, Memory } from '@elizaos/core';
+import { templateSchema } from '@loomlabs/schema';
+import {
+  findTemplatesByKeyword,
+  getTemplateById,
+  templates as templateRegistry,
+} from '@loomlabs/templates';
 
 import loomPlugin from './index';
 import { runPhase1ElizaOsSmokeTests } from './phase-1-smoke.test';
@@ -25,11 +31,36 @@ type RuntimeSmokeResult = {
 
 type TemplateSummary = {
   id: string;
+  name?: string;
+  description?: string;
+  protocol?: string;
+  category?: string;
+  parameters?: unknown[];
+  trigger?: unknown;
+  actions?: unknown[];
   sepolia?: {
     executionMode?: string;
     contracts?: Array<{ contract: string; address?: { value?: string } }>;
   };
 };
+
+type MarketplaceItemSummary = {
+  id: string;
+  template?: TemplateSummary;
+  pricing?: { type?: string };
+  source?: string;
+};
+
+const marketplaceTemplateFields = [
+  'id',
+  'name',
+  'description',
+  'protocol',
+  'category',
+  'parameters',
+  'trigger',
+  'actions',
+] as const;
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -76,6 +107,14 @@ function getTemplates(result: ActionResult | undefined): TemplateSummary[] {
   return value as TemplateSummary[];
 }
 
+function getMarketplaceItems(result: ActionResult | undefined): MarketplaceItemSummary[] {
+  const data = getDataRecord(result);
+  const value = data.items;
+
+  assert(Array.isArray(value), 'BROWSE_MARKETPLACE must return items array');
+  return value as MarketplaceItemSummary[];
+}
+
 function getDescribedTemplate(result: ActionResult | undefined): TemplateSummary {
   const data = getDataRecord(result);
   const value = data.template;
@@ -90,6 +129,48 @@ function getCandidateIds(result: ActionResult | undefined): string[] {
 
   assert(Array.isArray(value), 'CREATE_WORKFLOW_DEMO must return templateCandidates array');
   return (value as TemplateSummary[]).map((template) => template.id);
+}
+
+function assertMarketplaceTemplateFields(template: TemplateSummary, label: string): void {
+  const record = template as Record<string, unknown>;
+
+  for (const field of marketplaceTemplateFields) {
+    assert(field in record, `${label} must preserve marketplace field ${field}`);
+  }
+
+  assert(typeof template.id === 'string', `${label}.id must be a string`);
+  assert(typeof template.name === 'string', `${label}.name must be a string`);
+  assert(typeof template.description === 'string', `${label}.description must be a string`);
+  assert(typeof template.protocol === 'string', `${label}.protocol must be a string`);
+  assert(typeof template.category === 'string', `${label}.category must be a string`);
+  assert(Array.isArray(template.parameters), `${label}.parameters must be an array`);
+  assert(template.trigger && typeof template.trigger === 'object', `${label}.trigger must exist`);
+  assert(Array.isArray(template.actions), `${label}.actions must be an array`);
+}
+
+function assertTemplateRegistryPreservesSchemaContract(): void {
+  for (const template of templateRegistry) {
+    templateSchema.parse(template);
+    assertMarketplaceTemplateFields(template, template.id);
+    assert(getTemplateById(template.id) === template, `${template.id} lookup must remain stable`);
+    assert(!('sepolia' in template), `${template.id} must not inline Sepolia metadata`);
+    assert(!('chainId' in template), `${template.id} must not inline chain metadata`);
+    assert(
+      !('runtimePlaceholderValues' in template),
+      `${template.id} must keep runtime metadata separate`,
+    );
+  }
+
+  for (const [keyword, expectedTemplateId] of [
+    ['aave', 'aave-recurring-deposit'],
+    ['uniswap', 'uniswap-dca'],
+    ['lido', 'lido-stake'],
+  ] as const) {
+    assert(
+      findTemplatesByKeyword(keyword).some((template) => template.id === expectedTemplateId),
+      `${keyword} keyword lookup must still include ${expectedTemplateId}`,
+    );
+  }
 }
 
 function assertTemplateIds(templates: TemplateSummary[], expectedIds: string[]): void {
@@ -156,14 +237,45 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   const browseTemplatesAction = loomPlugin.actions.find(
     (action) => action.name === 'BROWSE_TEMPLATES',
   );
+  const browseMarketplaceAction = loomPlugin.actions.find(
+    (action) => action.name === 'BROWSE_MARKETPLACE',
+  );
   const describeTemplateAction = loomPlugin.actions.find(
     (action) => action.name === 'DESCRIBE_TEMPLATE',
   );
   const demoAction = loomPlugin.actions.find((action) => action.name === 'CREATE_WORKFLOW_DEMO');
 
   assert(browseTemplatesAction, 'BROWSE_TEMPLATES action must exist');
+  assert(browseMarketplaceAction, 'BROWSE_MARKETPLACE action must exist');
   assert(describeTemplateAction, 'DESCRIBE_TEMPLATE action must exist');
   assert(demoAction, 'CREATE_WORKFLOW_DEMO action must exist');
+
+  assertTemplateRegistryPreservesSchemaContract();
+  integrationCases.push('Template registry preserves marketplace/schema fields');
+
+  const marketplaceResult = await browseMarketplaceAction.handler(
+    mockRuntime,
+    mockMessage('Browse marketplace templates'),
+  );
+  assertActionResult('BROWSE_MARKETPLACE integration', marketplaceResult);
+
+  const marketplaceItems = getMarketplaceItems(marketplaceResult);
+  assertTemplateIds(
+    marketplaceItems.map((item) => {
+      assert(item.template, `${item.id} must expose a template summary`);
+      return item.template;
+    }),
+    ['aave-recurring-deposit', 'uniswap-dca', 'lido-stake'],
+  );
+
+  for (const item of marketplaceItems) {
+    assert(item.source === 'local-demo-registry', `${item.id} must come from local demo registry`);
+    assert(item.pricing?.type === 'free', `${item.id} must remain free in the demo registry`);
+    assert(item.template, `${item.id} must expose template data`);
+    assertMarketplaceTemplateFields(item.template, item.id);
+  }
+
+  integrationCases.push('BROWSE_MARKETPLACE exposes marketplace-safe template fields');
 
   const browseResult = await browseTemplatesAction.handler(
     mockRuntime,
