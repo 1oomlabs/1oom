@@ -44,6 +44,20 @@ type TemplateSummary = {
   };
 };
 
+type DryRunWorkflowDraftSummary = {
+  templateId?: string;
+  chainId?: number | null;
+  network?: string | null;
+  executionMode?: string;
+  parameters?: Record<string, unknown>;
+  actions?: unknown[];
+  runtimePlaceholderValues?: unknown[];
+  contracts?: unknown[];
+  unsupportedOperations?: string[];
+  deployStatus?: string;
+  deployBlockedBy?: string[];
+};
+
 type MarketplaceItemSummary = {
   id: string;
   template?: TemplateSummary;
@@ -91,7 +105,24 @@ function assertActionResult(actionName: string, result: ActionResult | undefined
 
   assert(serialized.includes('dry-run-only'), `${actionName} must stay dry-run-only`);
   assert(!serialized.includes('privateKey'), `${actionName} must not require private keys`);
+  assert(!serialized.includes('rpcUrl'), `${actionName} must not require RPC URLs`);
+  assert(!serialized.includes('apiKey'), `${actionName} must not require API keys`);
+  assert(!serialized.includes('keeperhubClient'), `${actionName} must not expose KeeperHub client`);
+  assert(!serialized.includes('fetch('), `${actionName} must not expose fetch calls`);
   assert(!serialized.includes('transactionHash'), `${actionName} must not return tx hashes`);
+}
+
+function assertDryRunSafety(actionName: string, result: ActionResult | undefined): void {
+  const data = getDataRecord(result);
+  const safety = data.safety as Record<string, unknown> | undefined;
+
+  assert(safety, `${actionName} must include safety metadata`);
+  assert(safety.callsKeeperHub === false, `${actionName} must not call KeeperHub`);
+  assert(safety.callsExternalLlm === false, `${actionName} must not call external LLMs`);
+  assert(safety.callsAppApi === false, `${actionName} must not call app APIs`);
+  assert(safety.requiresApiKey === false, `${actionName} must not require API keys`);
+  assert(safety.requiresSigner === false, `${actionName} must not require signer`);
+  assert(safety.requiresRpc === false, `${actionName} must not require RPC`);
 }
 
 function getDataRecord(result: ActionResult | undefined): Record<string, unknown> {
@@ -129,6 +160,47 @@ function getCandidateIds(result: ActionResult | undefined): string[] {
 
   assert(Array.isArray(value), 'CREATE_WORKFLOW_DEMO must return templateCandidates array');
   return (value as TemplateSummary[]).map((template) => template.id);
+}
+
+function getWorkflowDraft(result: ActionResult | undefined): DryRunWorkflowDraftSummary {
+  const data = getDataRecord(result);
+  const value = data.workflowDraft;
+
+  assert(value && typeof value === 'object', 'CREATE_WORKFLOW_DEMO must return workflowDraft');
+  return value as DryRunWorkflowDraftSummary;
+}
+
+function assertDryRunWorkflowDraft(
+  result: ActionResult | undefined,
+  expectedTemplateId: string,
+): void {
+  const draft = getWorkflowDraft(result);
+
+  assert(draft.templateId === expectedTemplateId, 'workflowDraft must match selected template');
+  assert(draft.chainId === 11155111, 'workflowDraft must target Sepolia');
+  assert(draft.network === 'sepolia', 'workflowDraft network must be sepolia');
+  assert(draft.executionMode === 'dry-run-only', 'workflowDraft must stay dry-run-only');
+  assert(draft.parameters && typeof draft.parameters === 'object', 'workflowDraft needs params');
+  assert(Array.isArray(draft.actions), 'workflowDraft actions must be an array');
+  assert(
+    Array.isArray(draft.runtimePlaceholderValues),
+    'workflowDraft runtimePlaceholderValues must be an array',
+  );
+  assert(Array.isArray(draft.contracts), 'workflowDraft contracts must be an array');
+  assert(Array.isArray(draft.unsupportedOperations), 'workflowDraft must list blocked operations');
+  assert(
+    draft.unsupportedOperations.includes('keeperhub-deploy'),
+    'workflowDraft must block KeeperHub deploy',
+  );
+  assert(
+    draft.unsupportedOperations.includes('api-deploy'),
+    'workflowDraft must block app API deploy',
+  );
+  assert(draft.deployStatus === 'dry-run-not-submitted', 'workflowDraft must not be submitted');
+  assert(
+    draft.deployBlockedBy?.includes('real-transaction-execution'),
+    'workflowDraft must block real transaction execution',
+  );
 }
 
 function assertMarketplaceTemplateFields(template: TemplateSummary, label: string): void {
@@ -232,7 +304,13 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     );
 
     assertActionResult(action.name, result);
+    assertDryRunSafety(action.name, result);
   }
+
+  assert(loomPlugin.safety.blockedExternalCalls.includes('keeperhub-deploy'), 'must block deploy');
+  assert(loomPlugin.safety.blockedExternalCalls.includes('llm-api-call'), 'must block LLM calls');
+  assert(loomPlugin.safety.blockedExternalCalls.includes('apps-api-call'), 'must block API calls');
+  assert(loomPlugin.safety.forbiddenRuntimeRequirements.includes('apiKey'), 'must forbid API keys');
 
   const browseTemplatesAction = loomPlugin.actions.find(
     (action) => action.name === 'BROWSE_TEMPLATES',
@@ -258,6 +336,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     mockMessage('Browse marketplace templates'),
   );
   assertActionResult('BROWSE_MARKETPLACE integration', marketplaceResult);
+  assertDryRunSafety('BROWSE_MARKETPLACE integration', marketplaceResult);
 
   const marketplaceItems = getMarketplaceItems(marketplaceResult);
   assertTemplateIds(
@@ -282,6 +361,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     mockMessage('Browse available DeFi templates'),
   );
   assertActionResult('BROWSE_TEMPLATES integration', browseResult);
+  assertDryRunSafety('BROWSE_TEMPLATES integration', browseResult);
 
   const browsedTemplates = getTemplates(browseResult);
   assertTemplateIds(browsedTemplates, ['aave-recurring-deposit', 'uniswap-dca', 'lido-stake']);
@@ -297,6 +377,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
       mockMessage(`templateId=${templateId}`),
     );
     assertActionResult(`DESCRIBE_TEMPLATE ${templateId}`, result);
+    assertDryRunSafety(`DESCRIBE_TEMPLATE ${templateId}`, result);
 
     const template = getDescribedTemplate(result);
     assert(template.id === templateId, `DESCRIBE_TEMPLATE must return ${templateId}`);
@@ -318,10 +399,12 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   for (const [prompt, expectedTemplateId] of intentCases) {
     const result = await demoAction.handler(mockRuntime, mockMessage(prompt));
     assertActionResult(`CREATE_WORKFLOW_DEMO ${expectedTemplateId}`, result);
+    assertDryRunSafety(`CREATE_WORKFLOW_DEMO ${expectedTemplateId}`, result);
     assert(
       getCandidateIds(result).includes(expectedTemplateId),
       `${prompt} must include ${expectedTemplateId}`,
     );
+    assertDryRunWorkflowDraft(result, expectedTemplateId);
     integrationCases.push(`CREATE_WORKFLOW_DEMO maps "${prompt}"`);
   }
 

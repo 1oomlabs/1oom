@@ -282,10 +282,33 @@ stake ETH with Lido
       confidence: 0.85,
       parameters: {}
     },
+    workflowDraft: {
+      templateId: 'lido-stake',
+      chainId: 11155111,
+      network: 'sepolia',
+      executionMode: 'dry-run-only',
+      parameters: {},
+      actions: [],
+      runtimePlaceholderValues: [],
+      contracts: [],
+      unsupportedOperations: [
+        'api-deploy',
+        'keeperhub-deploy',
+        'real-transaction-execution'
+      ],
+      deployStatus: 'dry-run-not-submitted',
+      deployBlockedBy: [
+        'keeperhub-deploy',
+        'api-deploy',
+        'real-transaction-execution'
+      ]
+    },
     templateCandidates: [],
     unsupportedOperations: [
       'real-transaction-execution',
-      'signer-required'
+      'signer-required',
+      'keeperhub-deploy',
+      'api-deploy'
     ]
   }
 }
@@ -325,6 +348,25 @@ stake ETH with Lido
 - RPC 호출
 - signer/wallet 접근
 - transaction 생성/서명/전송
+
+응답의 `data.safety`는 아래 값을 명시합니다.
+
+```ts
+{
+  callsKeeperHub: false,
+  callsExternalLlm: false,
+  callsAppApi: false,
+  requiresApiKey: false,
+  requiresSigner: false,
+  requiresRpc: false
+}
+```
+
+응답의 `workflowDraft`는 후속 시스템이 참고할 수 있는 dry-run draft입니다. 이 값은 deploy-ready 형태를 지향하지만, 실제 submit 상태가 아닙니다.
+
+```ts
+workflowDraft.deployStatus === 'dry-run-not-submitted'
+```
 
 다른 팀이 실제 실행을 붙이려면 먼저 live execution 설계를 별도 문서로 확정해야 합니다.
 

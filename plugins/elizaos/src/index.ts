@@ -29,6 +29,7 @@ export type LoomPlugin = Plugin & {
   executionMode: typeof DRY_RUN_ONLY;
   safety: {
     forbiddenRuntimeRequirements: readonly string[];
+    blockedExternalCalls: readonly string[];
     noProductionExecutionTerms: readonly string[];
   };
   actions: LoomAction[];
@@ -40,6 +41,7 @@ type DemoWorkflowCandidate = {
   integrationRisk: typeof INTEGRATION_RISK;
   safety: ReturnType<typeof dryRunSafetyPayload>;
   intent: DemoIntent;
+  workflowDraft: DryRunWorkflowDraft;
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
 };
@@ -49,6 +51,23 @@ type DemoIntent = {
   confidence: number;
   parameters: Record<string, unknown>;
   reasoning: string;
+};
+
+type DryRunWorkflowDraft = {
+  templateId: string;
+  chainId: number | null;
+  network: string | null;
+  executionMode: typeof DRY_RUN_ONLY;
+  parameters: Record<string, unknown>;
+  trigger: ReturnType<typeof summarizeTemplate>['trigger'];
+  actions: ReturnType<typeof summarizeTemplate>['actions'];
+  runtimePlaceholderValues: NonNullable<
+    ReturnType<typeof summarizeTemplate>['sepolia']
+  >['runtimePlaceholderValues'];
+  contracts: NonNullable<ReturnType<typeof summarizeTemplate>['sepolia']>['contracts'];
+  unsupportedOperations: string[];
+  deployStatus: 'dry-run-not-submitted';
+  deployBlockedBy: string[];
 };
 
 function getMessageText(message: Memory): string {
@@ -189,17 +208,45 @@ function demoUnsupportedOperations(candidates: ReturnType<typeof summarizeTempla
 function dryRunSafetyPayload() {
   return {
     canExecuteTransactions: false,
+    callsKeeperHub: false,
+    callsExternalLlm: false,
+    callsAppApi: false,
     requiresSigner: false,
     requiresRpc: false,
     requiresWallet: false,
     requiresPrivateKey: false,
+    requiresApiKey: false,
     executionBlockedBy: [
       'dry-run-only',
       'no-signer',
       'no-rpc',
       'no-wallet',
       'no-transaction-broadcast',
+      'no-keeperhub-deploy',
+      'no-llm-api-call',
+      'no-app-api-call',
     ],
+  };
+}
+
+function createDryRunWorkflowDraft(
+  template: ReturnType<typeof summarizeTemplate>,
+  intent: DemoIntent,
+  unsupportedOperations: string[],
+): DryRunWorkflowDraft {
+  return {
+    templateId: template.id,
+    chainId: template.sepolia?.chainId ?? null,
+    network: template.sepolia?.network ?? null,
+    executionMode: DRY_RUN_ONLY,
+    parameters: intent.parameters,
+    trigger: template.trigger,
+    actions: template.actions,
+    runtimePlaceholderValues: template.sepolia?.runtimePlaceholderValues ?? [],
+    contracts: template.sepolia?.contracts ?? [],
+    unsupportedOperations,
+    deployStatus: 'dry-run-not-submitted',
+    deployBlockedBy: ['keeperhub-deploy', 'api-deploy', 'real-transaction-execution'],
   };
 }
 
@@ -208,6 +255,15 @@ async function createDryRunWorkflowCandidate(message: {
 }): Promise<DemoWorkflowCandidate> {
   const templateCandidates = findTemplateCandidates(message.text);
   const intent = inferDemoIntent(message.text, templateCandidates);
+  const primaryCandidate = templateCandidates[0];
+  const fallbackTemplate = templates[0];
+  const workflowTemplate =
+    primaryCandidate ?? (fallbackTemplate ? summarizeTemplate(fallbackTemplate) : undefined);
+  const unsupportedOperations = demoUnsupportedOperations(templateCandidates);
+
+  if (!workflowTemplate) {
+    throw new Error('Template registry must expose at least one template.');
+  }
 
   return {
     ok: true,
@@ -215,8 +271,9 @@ async function createDryRunWorkflowCandidate(message: {
     integrationRisk: INTEGRATION_RISK,
     safety: dryRunSafetyPayload(),
     intent,
+    workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
     templateCandidates,
-    unsupportedOperations: demoUnsupportedOperations(templateCandidates),
+    unsupportedOperations,
   };
 }
 
@@ -356,7 +413,8 @@ export const loomPlugin: LoomPlugin = {
   integrationRisk: INTEGRATION_RISK,
   executionMode: DRY_RUN_ONLY,
   safety: {
-    forbiddenRuntimeRequirements: ['signer', 'rpcUrl', 'wallet', 'privateKey'],
+    forbiddenRuntimeRequirements: ['signer', 'rpcUrl', 'wallet', 'privateKey', 'apiKey'],
+    blockedExternalCalls: ['keeperhub-deploy', 'llm-api-call', 'apps-api-call'],
     noProductionExecutionTerms: [],
   },
   actions: [
