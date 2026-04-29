@@ -1,5 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
-import type { AnyRoute } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 
 import { EmptyState } from '@/components/shared/empty-state';
 import { ErrorState } from '@/components/shared/error-state';
@@ -9,10 +8,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { WorkflowCard } from '@/components/ui/workflow-card';
-import { protocols, sorts, useMarketplacePageVM } from '@/hooks/page/use-marketplace-page-vm';
+import {
+  marketplaceSearchSchema,
+  protocols,
+  sorts,
+  useMarketplacePageVM,
+} from '@/hooks/page/use-marketplace-page-vm';
 import { listingToCard } from '@/lib/view-models';
 
-export const Route: AnyRoute = createFileRoute('/marketplace')({
+export const Route = createFileRoute('/marketplace')({
+  validateSearch: marketplaceSearchSchema,
   component: MarketplacePage,
 });
 
@@ -28,7 +33,7 @@ function MarketplacePage() {
         size="large"
         action={
           <Button variant="accent" size="lg" asChild>
-            <a href="/workflows/new">Publish workflow</a>
+            <Link to="/workflows/new">Publish workflow</Link>
           </Button>
         }
         className="mb-12"

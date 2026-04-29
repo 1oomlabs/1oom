@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useMemo } from 'react';
+import { z } from 'zod';
 
 import { type MarketplaceListing, useMarketplaceList } from '@/api';
 import type { ApiError } from '@/api';
@@ -12,6 +14,18 @@ export const sorts = [
   { value: 'newest', label: 'Newest' },
 ] as const;
 export type SortValue = (typeof sorts)[number]['value'];
+
+/**
+ * URL search params for /marketplace. `.catch()` keeps the page resilient
+ * to handcrafted/legacy URLs by falling back to defaults instead of crashing.
+ */
+export const marketplaceSearchSchema = z.object({
+  filter: z.enum(protocols).catch('all').default('all'),
+  query: z.string().catch('').default(''),
+  sort: z.enum(['popular', 'newest']).catch('popular').default('popular'),
+});
+
+export type MarketplaceSearch = z.infer<typeof marketplaceSearchSchema>;
 
 export interface MarketplacePageVM {
   filter: ProtocolFilter;
@@ -29,9 +43,17 @@ export interface MarketplacePageVM {
 }
 
 export function useMarketplacePageVM(): MarketplacePageVM {
-  const [filter, setFilter] = useState<ProtocolFilter>('all');
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<SortValue>('popular');
+  const search = useSearch({ from: '/marketplace' });
+  const navigate = useNavigate({ from: '/marketplace' });
+
+  const updateSearch = (patch: Partial<MarketplaceSearch>) => {
+    void navigate({
+      search: (prev) => ({ ...prev, ...patch }),
+      replace: true,
+    });
+  };
+
+  const { filter, query, sort } = search;
 
   const { data: listings, isLoading, isError, error, refetch } = useMarketplaceList({ sort });
 
@@ -52,11 +74,11 @@ export function useMarketplacePageVM(): MarketplacePageVM {
 
   return {
     filter,
-    setFilter,
+    setFilter: (f) => updateSearch({ filter: f }),
     query,
-    setQuery,
+    setQuery: (q) => updateSearch({ query: q }),
     sort,
-    setSort,
+    setSort: (s) => updateSearch({ sort: s }),
     isLoading,
     isError,
     error: error ?? null,
