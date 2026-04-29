@@ -1,5 +1,4 @@
 import { Link, createFileRoute } from '@tanstack/react-router';
-import type { AnyRoute } from '@tanstack/react-router';
 
 import { AgentLoadingGrid } from '@/components/shared/agent-card-skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -9,7 +8,7 @@ import { AgentAvatar } from '@/components/ui/agent-avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAgentsListVM } from '@/hooks/page/use-agents-list-vm';
 
-export const Route: AnyRoute = createFileRoute('/agents/')({
+export const Route = createFileRoute('/agents/')({
   component: AgentsIndexPage,
 });
 
