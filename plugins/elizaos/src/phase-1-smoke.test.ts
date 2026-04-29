@@ -103,10 +103,11 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
 
         assert(action, `${actionName} must exist`);
 
-        const response = await action.handler(
-          mockRuntime,
-          mockMessage('Create a demo Aave deposit workflow'),
-        );
+        const text =
+          actionName === 'DESCRIBE_TEMPLATE'
+            ? 'templateId=aave-recurring-deposit'
+            : 'Create a demo Aave deposit workflow';
+        const response = await action.handler(mockRuntime, mockMessage(text));
         const serializedResponse = JSON.stringify(response);
 
         assert(response?.success === true, `${actionName} must return a successful ActionResult`);

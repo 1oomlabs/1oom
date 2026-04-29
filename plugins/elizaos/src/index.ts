@@ -103,6 +103,7 @@ function summarizeTemplate(template: (typeof templates)[number]) {
           runtimePlaceholders: metadata.runtimePlaceholders,
           runtimePlaceholderValues: metadata.runtimePlaceholderValues,
           demoParameters: metadata.demoParameters,
+          contracts: metadata.contracts,
           verificationTargets: metadata.verificationTargets,
           liquidity: metadata.liquidity,
           unsupportedOperations: metadata.unsupportedOperations,
