@@ -1,6 +1,6 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 
-import type { CreateWorkflowRequest, Workflow } from '@loomlabs/schema';
+import { type CreateWorkflowRequest, type Workflow, workflowSchema } from '@loomlabs/schema';
 
 import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
@@ -34,7 +34,7 @@ export interface ExecuteResult {
 
 export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
   constructor(client: ApiClient, path = '/workflows') {
-    super(client, path, { list: 'workflows', item: 'workflow' });
+    super(client, path, { list: 'workflows', item: 'workflow' }, workflowSchema);
   }
 
   async run(id: string): Promise<{ workflow: Workflow; execution: ExecuteResult }> {

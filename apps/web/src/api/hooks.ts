@@ -57,8 +57,12 @@ export function makeResourceHooks<T extends Identifiable, Q extends ListParams =
     useQuery<T, ApiError>({
       ...options,
       queryKey: keys.detail(id ?? ''),
-
-      queryFn: () => resource.get(id as string),
+      queryFn: () => {
+        if (!id) {
+          throw new Error('useOne queryFn invoked without id (enabled gate failed)');
+        }
+        return resource.get(id);
+      },
       enabled: Boolean(id) && options?.enabled !== false,
     });
 
