@@ -7,6 +7,13 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { WorkflowCard } from '@/components/ui/workflow-card';
 import {
   marketplaceSearchSchema,
@@ -65,17 +72,18 @@ function MarketplacePage() {
             placeholder="Search workflows…"
             className="w-full md:w-64"
           />
-          <select
-            value={vm.sort}
-            onChange={(e) => vm.setSort(e.target.value as typeof vm.sort)}
-            className="h-10 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {sorts.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+          <Select value={vm.sort} onValueChange={(v) => vm.setSort(v as typeof vm.sort)}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              {sorts.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
