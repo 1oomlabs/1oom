@@ -503,3 +503,5 @@ live 작업 전에는 아래 내용을 별도 명세로 확정해야 합니다.
 - receipt / error 응답 구조
 - 환경변수 목록
 - live test opt-in 방식
+
+현재 제안 설계는 `plugins/elizaos/LIVE_EXECUTION_DESIGN.md`에 정리되어 있습니다. 이 문서는 구현이 아니라 승인 전 설계안이며, 현재 action은 계속 `dry-run-only`입니다.
