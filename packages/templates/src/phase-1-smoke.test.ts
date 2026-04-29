@@ -34,7 +34,11 @@ const allowedRuntimePlaceholders = new Set([
   '$MOCK_WSTETH',
   '$user',
 ]);
-const templatesWithResolvedProtocolData = new Set(['aave-recurring-deposit', 'uniswap-dca']);
+const templatesWithResolvedProtocolData = new Set([
+  'aave-recurring-deposit',
+  'uniswap-dca',
+  'lido-stake',
+]);
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -208,17 +212,25 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
     },
   },
   {
-    name: 'Lido stake uses mock ABI and keeps mock addresses human-gated',
+    name: 'Lido stake uses confirmed Sepolia mock addresses and mock ABI',
     run: () => {
       const lidoMetadata = getSepoliaTemplateMetadata('lido-stake');
       const lidoTemplate = getTemplateById('lido-stake');
 
       assert(lidoMetadata, 'Lido metadata must exist');
       assert(lidoTemplate, 'Lido template must exist');
-      assert(lidoMetadata.requiresHumanConfirmation, 'Lido mock addresses must remain human-gated');
+      assert(!lidoMetadata.requiresHumanConfirmation, 'Lido mock addresses must be resolved');
       assert(
-        lidoMetadata.unresolvedHumanConfirmations.some((item) => item.includes('MockLido')),
-        'Lido unresolved confirmations must mention MockLido',
+        lidoMetadata.unresolvedHumanConfirmations.length === 0,
+        'Lido unresolved confirmations must be cleared',
+      );
+      assert(
+        lidoMetadata.runtimePlaceholderValues.some(
+          (entry) =>
+            entry.placeholder === '$MOCK_WSTETH' &&
+            entry.value === '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+        ),
+        'Lido metadata must resolve $MOCK_WSTETH',
       );
 
       assertSameMembers(
@@ -233,8 +245,8 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
           `${contract.contract} must use mock-address metadata`,
         );
         assert(
-          contract.address.value === NEEDS_HUMAN_CONFIRMATION,
-          `${contract.contract} mock address must require human confirmation`,
+          contract.address.confirmation === HUMAN_CONFIRMED,
+          `${contract.contract} mock address must be human confirmed`,
         );
         assert(
           contract.abi.status === HUMAN_CONFIRMED,
@@ -274,6 +286,24 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
       assert(
         findDemoParameter('lido-stake', 'wstETHDecimals') === 18,
         'wstETH decimals must be 18',
+      );
+      assert(
+        lidoMetadata.contracts.some(
+          (contract) =>
+            contract.contract === 'MockLido' &&
+            contract.address.kind === 'mock-address' &&
+            contract.address.value === '0x800AB7B237F8Bf9639c0E9127756a5b9049D0C73',
+        ),
+        'Lido metadata must include the confirmed MockLido address',
+      );
+      assert(
+        lidoMetadata.contracts.some(
+          (contract) =>
+            contract.contract === 'MockStETH' &&
+            contract.address.kind === 'mock-address' &&
+            contract.address.value === '0xE1264e5AADb69A27bE594aaafc502D654FFbaC97',
+        ),
+        'Lido metadata must include the confirmed MockStETH address',
       );
     },
   },

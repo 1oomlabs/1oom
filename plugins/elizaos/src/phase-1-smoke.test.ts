@@ -143,7 +143,7 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
     },
   },
   {
-    name: 'unresolved Lido metadata blocks execution in demo responses',
+    name: 'confirmed Lido mock metadata stays dry-run and blocks real execution',
     run: async () => {
       const describeAction = loomPlugin.actions.find(
         (action) => action.name === 'DESCRIBE_TEMPLATE',
@@ -165,8 +165,16 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
       const combinedResponse = JSON.stringify([describeResponse, demoResponse]);
 
       assert(
-        combinedResponse.includes('NEEDS_HUMAN_CONFIRMATION'),
-        'Lido demo response must expose unresolved metadata',
+        combinedResponse.includes('HUMAN_CONFIRMED'),
+        'Lido demo response must expose confirmed mock metadata',
+      );
+      assert(
+        combinedResponse.includes('0x800AB7B237F8Bf9639c0E9127756a5b9049D0C73'),
+        'Lido demo response must include the confirmed MockLido address',
+      );
+      assert(
+        combinedResponse.includes('0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08'),
+        'Lido demo response must include the confirmed MockWstETH address',
       );
       assert(
         combinedResponse.includes('real-transaction-execution'),
