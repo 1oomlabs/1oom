@@ -1,3 +1,5 @@
+import type { IAgentRuntime, Memory } from '@elizaos/core';
+
 import loomPlugin from './index';
 import type { LoomAction } from './index';
 
@@ -36,6 +38,19 @@ function getActionNames(actions: LoomAction[]): string[] {
   return actions.map((action) => action.name);
 }
 
+const mockRuntime = {} as IAgentRuntime;
+
+function mockMessage(text: string): Memory {
+  return {
+    entityId: '00000000-0000-0000-0000-000000000001',
+    roomId: '00000000-0000-0000-0000-000000000002',
+    content: {
+      text,
+      source: 'smoke-test',
+    },
+  } as Memory;
+}
+
 export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
   {
     name: 'loom plugin keeps the existing loose ElizaOS action surface intact',
@@ -57,6 +72,7 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
     run: () => {
       for (const action of loomPlugin.actions) {
         assert(action.description.length > 0, `${action.name} must have a description`);
+        assert(typeof action.validate === 'function', `${action.name} must have a validate`);
         assert(typeof action.handler === 'function', `${action.name} must have a handler`);
       }
     },
@@ -87,11 +103,14 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
 
         assert(action, `${actionName} must exist`);
 
-        const response = await action.handler(undefined, {
-          text: 'Create a demo Aave deposit workflow',
-        });
+        const text =
+          actionName === 'DESCRIBE_TEMPLATE'
+            ? 'templateId=aave-recurring-deposit'
+            : 'Create a demo Aave deposit workflow';
+        const response = await action.handler(mockRuntime, mockMessage(text));
         const serializedResponse = JSON.stringify(response);
 
+        assert(response?.success === true, `${actionName} must return a successful ActionResult`);
         assert(
           serializedResponse.includes('dry-run-only'),
           `${actionName} must return a dry-run-only payload`,
@@ -130,11 +149,13 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
 
         assert(action, `${actionName} must exist`);
 
-        const response = await action.handler(hostileRuntime, {
-          text: 'templateId=lido-stake',
-        });
+        const response = await action.handler(
+          hostileRuntime as unknown as IAgentRuntime,
+          mockMessage('templateId=lido-stake'),
+        );
         const serializedResponse = JSON.stringify(response);
 
+        assert(response?.success === true, `${actionName} must return a successful ActionResult`);
         assert(
           serializedResponse.includes('dry-run-only'),
           `${actionName} must stay dry-run without runtime credentials`,
@@ -155,15 +176,19 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
       assert(describeAction, 'DESCRIBE_TEMPLATE must exist');
       assert(demoAction, 'CREATE_WORKFLOW_DEMO must exist');
 
-      const describeResponse = await describeAction.handler(undefined, {
-        text: 'templateId=lido-stake',
-      });
-      const demoResponse = await demoAction.handler(undefined, {
-        text: 'Please stake ETH with Lido',
-      });
+      const describeResponse = await describeAction.handler(
+        mockRuntime,
+        mockMessage('templateId=lido-stake'),
+      );
+      const demoResponse = await demoAction.handler(
+        mockRuntime,
+        mockMessage('Please stake ETH with Lido'),
+      );
 
       const combinedResponse = JSON.stringify([describeResponse, demoResponse]);
 
+      assert(describeResponse?.success === true, 'describe action must return ActionResult');
+      assert(demoResponse?.success === true, 'demo action must return ActionResult');
       assert(
         combinedResponse.includes('HUMAN_CONFIRMED'),
         'Lido demo response must expose confirmed mock metadata',

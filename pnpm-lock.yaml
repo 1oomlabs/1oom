@@ -233,9 +233,6 @@ importers:
 
   plugins/elizaos:
     dependencies:
-      '@elizaos/core':
-        specifier: '*'
-        version: 2.0.0-alpha.77(@opentelemetry/api@1.9.0)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@loomlabs/keeperhub-client':
         specifier: workspace:*
         version: link:../../packages/keeperhub-client
@@ -252,6 +249,12 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@elizaos/core':
+        specifier: 2.0.0-alpha.77
+        version: 2.0.0-alpha.77(@opentelemetry/api@1.9.0)(ws@8.20.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      tsx:
+        specifier: ^4.20.0
+        version: 4.21.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

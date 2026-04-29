@@ -1,3 +1,4 @@
+import type { Action, ActionResult, HandlerOptions, Memory, Plugin } from '@elizaos/core';
 import {
   DRY_RUN_ONLY,
   findTemplatesByKeyword,
@@ -15,23 +16,15 @@ import {
  *   4. DESCRIBE_TEMPLATE - describe one local template and its Sepolia demo metadata.
  *   5. CREATE_WORKFLOW_DEMO - create a dry-run demo workflow candidate only.
  *
- * Types are kept loose so this package does not hard-depend on @elizaos/core.
- * Runtime compatibility remains INTEGRATION_RISK until verified against the actual runtime.
+ * Types follow @elizaos/core 2.0.0-alpha.77 while keeping every action dry-run only.
+ * Runtime compatibility remains INTEGRATION_RISK until verified inside an actual ElizaOS agent.
  */
 
 export const INTEGRATION_RISK = 'INTEGRATION_RISK' as const;
 
-type ActionHandler = (runtime: unknown, message: { text: string }) => Promise<unknown>;
+export type LoomAction = Action;
 
-export interface LoomAction {
-  name: string;
-  description: string;
-  handler: ActionHandler;
-}
-
-export type LoomPlugin = {
-  name: string;
-  description: string;
+export type LoomPlugin = Plugin & {
   integrationRisk: typeof INTEGRATION_RISK;
   executionMode: typeof DRY_RUN_ONLY;
   safety: {
@@ -42,11 +35,11 @@ export type LoomPlugin = {
 };
 
 type DemoWorkflowCandidate = {
-  ok: true;
+  ok: boolean;
   executionMode: typeof DRY_RUN_ONLY;
   integrationRisk: typeof INTEGRATION_RISK;
   safety: ReturnType<typeof dryRunSafetyPayload>;
-  intent: unknown;
+  intent: DemoIntent;
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
 };
@@ -58,8 +51,12 @@ type DemoIntent = {
   reasoning: string;
 };
 
-function extractTemplateId(message: { text: string }): string | undefined {
-  const trimmed = message.text.trim();
+function getMessageText(message: Memory): string {
+  return typeof message.content.text === 'string' ? message.content.text : '';
+}
+
+function extractTemplateId(message: Memory): string | undefined {
+  const trimmed = getMessageText(message).trim();
 
   if (!trimmed) {
     return undefined;
@@ -106,6 +103,7 @@ function summarizeTemplate(template: (typeof templates)[number]) {
           runtimePlaceholders: metadata.runtimePlaceholders,
           runtimePlaceholderValues: metadata.runtimePlaceholderValues,
           demoParameters: metadata.demoParameters,
+          contracts: metadata.contracts,
           verificationTargets: metadata.verificationTargets,
           liquidity: metadata.liquidity,
           unsupportedOperations: metadata.unsupportedOperations,
@@ -215,44 +213,99 @@ async function createDryRunWorkflowCandidate(message: {
   };
 }
 
+function createActionResult(text: string, data: DemoWorkflowCandidate): ActionResult {
+  return {
+    success: data.ok,
+    text,
+    data: data as unknown as NonNullable<ActionResult['data']>,
+  };
+}
+
+function createTemplateNotFoundResult(): ActionResult {
+  return {
+    success: false,
+    text: 'Template not found in the local dry-run registry.',
+    error: 'TEMPLATE_NOT_FOUND',
+    data: {
+      ok: false,
+      executionMode: DRY_RUN_ONLY,
+      integrationRisk: INTEGRATION_RISK,
+      safety: dryRunSafetyPayload(),
+      error: 'TEMPLATE_NOT_FOUND',
+      availableTemplateIds: templates.map((candidate) => candidate.id),
+    },
+  };
+}
+
+const validateDryRunAction: LoomAction['validate'] = async () => true;
+
+function getPromptOption(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): string | undefined {
+  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
+    return undefined;
+  }
+
+  const parameters = options.parameters as Record<string, unknown> | null;
+  const prompt = parameters?.prompt;
+
+  return typeof prompt === 'string' ? prompt : undefined;
+}
+
 export const createWorkflowAction: LoomAction = {
   name: 'CREATE_WORKFLOW',
   description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
-  handler: async (_runtime, message) => createDryRunWorkflowCandidate(message),
+  validate: validateDryRunAction,
+  handler: async (_runtime, message) =>
+    createActionResult(
+      'Created a dry-run workflow candidate. No transaction was executed.',
+      await createDryRunWorkflowCandidate({ text: getMessageText(message) }),
+    ),
 };
 
 export const browseMarketplaceAction: LoomAction = {
   name: 'BROWSE_MARKETPLACE',
   description: 'List demo-safe workflow listings from the local loomlabs template registry.',
+  validate: validateDryRunAction,
   handler: async () => ({
-    ok: true,
-    executionMode: DRY_RUN_ONLY,
-    integrationRisk: INTEGRATION_RISK,
-    safety: dryRunSafetyPayload(),
-    items: templates.map((template) => ({
-      id: `demo-${template.id}`,
-      template: summarizeTemplate(template),
-      pricing: { type: 'free' },
-      source: 'local-demo-registry',
-    })),
+    success: true,
+    text: 'Loaded dry-run marketplace entries from the local template registry.',
+    data: {
+      ok: true,
+      executionMode: DRY_RUN_ONLY,
+      integrationRisk: INTEGRATION_RISK,
+      safety: dryRunSafetyPayload(),
+      items: templates.map((template) => ({
+        id: `demo-${template.id}`,
+        template: summarizeTemplate(template),
+        pricing: { type: 'free' },
+        source: 'local-demo-registry',
+      })),
+    },
   }),
 };
 
 export const browseTemplatesAction: LoomAction = {
   name: 'BROWSE_TEMPLATES',
   description: 'Browse local templates with Sepolia dry-run metadata.',
+  validate: validateDryRunAction,
   handler: async () => ({
-    ok: true,
-    executionMode: DRY_RUN_ONLY,
-    integrationRisk: INTEGRATION_RISK,
-    safety: dryRunSafetyPayload(),
-    templates: templates.map(summarizeTemplate),
+    success: true,
+    text: 'Loaded local templates with Sepolia dry-run metadata.',
+    data: {
+      ok: true,
+      executionMode: DRY_RUN_ONLY,
+      integrationRisk: INTEGRATION_RISK,
+      safety: dryRunSafetyPayload(),
+      templates: templates.map(summarizeTemplate),
+    },
   }),
 };
 
 export const describeTemplateAction: LoomAction = {
   name: 'DESCRIBE_TEMPLATE',
   description: 'Describe one local template and its Sepolia dry-run metadata.',
+  validate: validateDryRunAction,
   handler: async (_runtime, message) => {
     const templateId = extractTemplateId(message);
     const template = templateId
@@ -260,22 +313,19 @@ export const describeTemplateAction: LoomAction = {
       : undefined;
 
     if (!template) {
-      return {
-        ok: false,
-        executionMode: DRY_RUN_ONLY,
-        integrationRisk: INTEGRATION_RISK,
-        safety: dryRunSafetyPayload(),
-        error: 'TEMPLATE_NOT_FOUND',
-        availableTemplateIds: templates.map((candidate) => candidate.id),
-      };
+      return createTemplateNotFoundResult();
     }
 
     return {
-      ok: true,
-      executionMode: DRY_RUN_ONLY,
-      integrationRisk: INTEGRATION_RISK,
-      safety: dryRunSafetyPayload(),
-      template: summarizeTemplate(template),
+      success: true,
+      text: `Loaded dry-run metadata for ${template.id}.`,
+      data: {
+        ok: true,
+        executionMode: DRY_RUN_ONLY,
+        integrationRisk: INTEGRATION_RISK,
+        safety: dryRunSafetyPayload(),
+        template: summarizeTemplate(template),
+      },
     };
   },
 };
@@ -283,7 +333,14 @@ export const describeTemplateAction: LoomAction = {
 export const createWorkflowDemoAction: LoomAction = {
   name: 'CREATE_WORKFLOW_DEMO',
   description: 'Create a dry-run demo workflow candidate without API, KeeperHub, or chain calls.',
-  handler: async (_runtime, message) => createDryRunWorkflowCandidate(message),
+  validate: validateDryRunAction,
+  handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
+    createActionResult(
+      'Created a dry-run demo workflow candidate. No transaction was executed.',
+      await createDryRunWorkflowCandidate({
+        text: getPromptOption(options) ?? getMessageText(message),
+      }),
+    ),
 };
 
 export const loomPlugin: LoomPlugin = {
