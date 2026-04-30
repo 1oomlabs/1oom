@@ -251,6 +251,9 @@ importers:
       '@loomlabs/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      viem:
+        specifier: ^2.48.4
+        version: 2.48.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
       zod:
         specifier: ^3.24.1
         version: 3.25.76

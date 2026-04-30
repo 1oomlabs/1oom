@@ -6,6 +6,9 @@ import {
   templates,
 } from '@loomlabs/templates';
 
+import { createAxlDiscoveryMetadata, createAxlPublishDraft } from './axl-flow';
+import type { AxlPublishDraft } from './axl-flow';
+
 /**
  * ElizaOS plugin surface.
  *
@@ -56,6 +59,10 @@ type DemoWorkflowCandidate = {
   contracts: NonNullable<ReturnType<typeof summarizeTemplate>['sepolia']>['contracts'];
   intent: DemoIntent;
   workflowDraft: DryRunWorkflowDraft;
+  axlFlow: AxlPublishDraft['axlFlow'];
+  registryHints: AxlPublishDraft['registryHints'];
+  onchainPublishDraft: AxlPublishDraft['onchainPublishDraft'];
+  axlEnvelopeDraft: AxlPublishDraft['axlEnvelopeDraft'];
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
 };
@@ -279,6 +286,21 @@ async function createDryRunWorkflowCandidate(message: {
     throw new Error('Template registry must expose at least one template.');
   }
 
+  const axlPublishDraft = createAxlPublishDraft({
+    templateId: workflowTemplate.id,
+    templateName: workflowTemplate.name,
+    protocol: workflowTemplate.protocol,
+    category: workflowTemplate.category,
+    chainId: workflowTemplate.sepolia?.chainId ?? null,
+    network: workflowTemplate.sepolia?.network ?? null,
+    parameters: intent.parameters,
+    trigger: workflowTemplate.trigger,
+    actions: workflowTemplate.actions,
+    runtimePlaceholderValues: workflowTemplate.sepolia?.runtimePlaceholderValues ?? [],
+    contracts: workflowTemplate.sepolia?.contracts ?? [],
+    unsupportedOperations,
+  });
+
   return {
     ok: true,
     executionMode: DRY_RUN_ONLY,
@@ -298,6 +320,10 @@ async function createDryRunWorkflowCandidate(message: {
     contracts: workflowTemplate.sepolia?.contracts ?? [],
     intent,
     workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
+    axlFlow: axlPublishDraft.axlFlow,
+    registryHints: axlPublishDraft.registryHints,
+    onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
+    axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
     templateCandidates,
     unsupportedOperations,
   };
@@ -373,12 +399,36 @@ export const browseMarketplaceAction: LoomAction = {
       executionMode: DRY_RUN_ONLY,
       integrationRisk: INTEGRATION_RISK,
       safety: dryRunSafetyPayload(),
-      items: templates.map((template) => ({
-        id: `demo-${template.id}`,
-        template: summarizeTemplate(template),
-        pricing: { type: 'free' },
-        source: 'local-demo-registry',
-      })),
+      ...createAxlDiscoveryMetadata(),
+      items: templates.map((template) => {
+        const summary = summarizeTemplate(template);
+        const intent = inferDemoIntent(template.id, [summary]);
+        const unsupportedOperations = demoUnsupportedOperations([summary]);
+        const axlPublishDraft = createAxlPublishDraft({
+          templateId: summary.id,
+          templateName: summary.name,
+          protocol: summary.protocol,
+          category: summary.category,
+          chainId: summary.sepolia?.chainId ?? null,
+          network: summary.sepolia?.network ?? null,
+          parameters: intent.parameters,
+          trigger: summary.trigger,
+          actions: summary.actions,
+          runtimePlaceholderValues: summary.sepolia?.runtimePlaceholderValues ?? [],
+          contracts: summary.sepolia?.contracts ?? [],
+          unsupportedOperations,
+        });
+
+        return {
+          id: `demo-${template.id}`,
+          template: summary,
+          pricing: { type: 'free' },
+          source: 'local-demo-registry',
+          registryHints: axlPublishDraft.registryHints,
+          onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
+          axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
+        };
+      }),
     },
   }),
 };
