@@ -39,6 +39,13 @@ forge script script/Deploy.s.sol \
   --private-key $PRIVATE_KEY
 ```
 
+Post-deploy checks:
+
+```bash
+cast call $MARKETPLACE_REGISTRY_ADDRESS "curator()(address)" --rpc-url sepolia
+cast call $MARKETPLACE_REGISTRY_ADDRESS "listingCount()(uint256)" --rpc-url sepolia
+```
+
 ## Lido mock contracts
 
 The Lido Sepolia integration uses mock contracts because the legacy Lido Sepolia

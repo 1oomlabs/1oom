@@ -5,10 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "typecheck": "prisma generate && tsc --noEmit",
+    "postinstall": "prisma generate",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.6",
@@ -18,13 +25,18 @@
     "@loomlabs/llm": "workspace:*",
     "@loomlabs/schema": "workspace:*",
     "@loomlabs/templates": "workspace:*",
+    "@prisma/client": "^6.19.3",
     "ai": "^4.0.22",
     "hono": "^4.6.14",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "prisma": {
+    "seed": "tsx --env-file=.env prisma/seed.ts"
   }
 }
