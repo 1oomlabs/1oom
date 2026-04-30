@@ -1,0 +1,52 @@
+// Loomlabs API — Postgres schema
+// 인메모리 store → Supabase Postgres via Prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Workflow {
+  id          String   @id @default(uuid())
+  templateId  String
+  owner       String
+  name        String
+  description String?
+  chainId     Int
+  parameters  Json
+  trigger     Json
+  actions     Json
+  status      String   @default("draft")
+  keeperJobId String?
+  createdAt   DateTime @default(now())
+
+  @@index([owner])
+  @@map("workflows")
+}
+
+model MarketplaceListing {
+  id        String   @id @default(uuid())
+  workflow  Json
+  author    String
+  tags      String[]
+  pricing   Json
+  stats     Json
+  createdAt DateTime @default(now())
+
+  @@index([author])
+  @@map("marketplace_listings")
+}
+
+model Agent {
+  id          String   @id
+  name        String
+  description String
+  actions     String[]
+
+  @@map("agents")
+}

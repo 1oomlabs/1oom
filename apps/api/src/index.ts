@@ -9,6 +9,7 @@ import { logError } from '@/log';
 import { agentsRouter } from '@/routes/agents';
 import { llmRouter } from '@/routes/llm';
 import { marketplaceRouter } from '@/routes/marketplace';
+import { templatesRouter } from '@/routes/templates';
 import { workflowsRouter } from '@/routes/workflows';
 
 const app = new Hono();
@@ -29,6 +30,7 @@ app.route('/api/workflows', workflowsRouter);
 app.route('/api/marketplace', marketplaceRouter);
 app.route('/api/llm', llmRouter);
 app.route('/api/agents', agentsRouter);
+app.route('/api/templates', templatesRouter);
 
 app.onError((err, c) => {
   // 사용자 친화 응답으로 매핑하되, 콘솔에는 원본 에러 그대로 남김 (디버깅용)

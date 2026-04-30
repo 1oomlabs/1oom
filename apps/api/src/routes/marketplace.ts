@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 
+import { getTemplateById } from '@loomlabs/templates';
+
 import { log } from '@/log';
 import { marketplaceStore } from '@/marketplaceStore';
 import { workflowStore } from '@/store';
@@ -26,27 +28,36 @@ const publishSchema = z.object({
     .default({ type: 'free' }),
 });
 
-// 게시된 listing 목록 — tag/author 필터 + newest/popular 정렬 지원
-marketplaceRouter.get('/', (c) => {
+// 게시된 listing 목록 — tag/author/protocol 필터 + newest/popular 정렬 + limit
+// protocol은 listing에 직접 저장 안 돼있어서 templateId → template.protocol로 조회
+// cursor는 데모 규모(<100건)엔 불필요해서 skip — 운영 단계에서 추가
+marketplaceRouter.get('/', async (c) => {
   const tag = c.req.query('tag');
   const author = c.req.query('author');
+  const protocol = c.req.query('protocol');
   const sort = c.req.query('sort') ?? 'newest';
+  const limit = Math.min(Number(c.req.query('limit') ?? 20), 100);
 
-  let items = marketplaceStore.list();
+  let items = await marketplaceStore.list();
   if (tag) items = items.filter((l) => l.tags.includes(tag));
   if (author) items = items.filter((l) => l.author === author);
+  if (protocol) {
+    items = items.filter((l) => getTemplateById(l.workflow.templateId)?.protocol === protocol);
+  }
   if (sort === 'popular') {
     items = [...items].sort((a, b) => b.stats.runs - a.stats.runs);
   } else {
     items = [...items].sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  return c.json({ items, total: items.length });
+  // total은 필터 통과한 전체 수, items는 limit만큼만 잘라서 반환
+  const total = items.length;
+  return c.json({ items: items.slice(0, limit), total });
 });
 
 // 단건 조회 — listing 정보 + 임베드된 워크플로우 함께 반환
-marketplaceRouter.get('/:id', (c) => {
-  const listing = marketplaceStore.get(c.req.param('id'));
+marketplaceRouter.get('/:id', async (c) => {
+  const listing = await marketplaceStore.get(c.req.param('id'));
   if (!listing) {
     return c.json({ error: 'listing not found' }, 404);
   }
@@ -54,14 +65,14 @@ marketplaceRouter.get('/:id', (c) => {
 });
 
 // 워크플로우를 마켓에 게시 — 우리 store에서 워크플로우 가져와서 listing에 스냅샷
-marketplaceRouter.post('/', zValidator('json', publishSchema), (c) => {
+marketplaceRouter.post('/', zValidator('json', publishSchema), async (c) => {
   const { workflowId, author, tags, pricing } = c.req.valid('json');
-  const workflow = workflowStore.get(workflowId);
+  const workflow = await workflowStore.get(workflowId);
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
   }
 
-  const listing = marketplaceStore.create({
+  const listing = await marketplaceStore.create({
     workflow,
     author,
     tags,
@@ -77,9 +88,9 @@ marketplaceRouter.post('/', zValidator('json', publishSchema), (c) => {
 });
 
 // 언퍼블리시 — listing 자체만 삭제, 원본 워크플로우는 그대로
-marketplaceRouter.delete('/:id', (c) => {
+marketplaceRouter.delete('/:id', async (c) => {
   const id = c.req.param('id');
-  const ok = marketplaceStore.delete(id);
+  const ok = await marketplaceStore.delete(id);
   if (!ok) {
     return c.json({ error: 'listing not found' }, 404);
   }
