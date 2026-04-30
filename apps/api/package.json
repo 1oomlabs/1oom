@@ -11,6 +11,8 @@
     "postinstall": "prisma generate",
     "clean": "rm -rf dist .turbo *.tsbuildinfo",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "db:generate": "prisma generate"

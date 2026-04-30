@@ -37,13 +37,22 @@ examples/
 
 ```bash
 nvm use         # Node 20.18.1
-pnpm install
-pnpm dev        # runs web + api in parallel
+cp apps/api/.env.example apps/api/.env   # fill DATABASE_URL / DIRECT_URL / ANTHROPIC_API_KEY
+cp apps/web/.env.example apps/web/.env   # if not present
+pnpm setup      # install + apply migrations + seed (run once)
+pnpm dev        # apply pending migrations, then start web + api in parallel
 ```
 
 ## Scripts
 
-- `pnpm dev` - start all dev servers
+- `pnpm setup` - install deps, run migrations, seed DB (one-shot)
+- `pnpm dev` - apply pending migrations then run all dev servers
+- `pnpm dev:fast` - skip migrate, run dev servers only (when DB is unchanged)
+- `pnpm db:deploy` - apply pending migrations to the configured DB
+- `pnpm db:migrate` - create + apply a new migration (schema changes)
+- `pnpm db:seed` - run the seed script
+- `pnpm db:studio` - open Prisma Studio
+- `pnpm db:reset` - drop + reapply migrations + seed (destructive)
 - `pnpm build` - build all packages
 - `pnpm typecheck` - typecheck all packages
 - `pnpm lint` - biome check
