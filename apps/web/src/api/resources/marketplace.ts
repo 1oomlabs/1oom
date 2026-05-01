@@ -13,6 +13,7 @@ export interface MarketplaceListParams extends ListParams {
   protocol?: string;
   tag?: string;
   author?: string;
+  workflowId?: string;
   sort?: 'newest' | 'popular';
   limit?: number;
   cursor?: string;

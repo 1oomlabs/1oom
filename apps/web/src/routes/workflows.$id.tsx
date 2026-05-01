@@ -213,6 +213,74 @@ function WorkflowDetailPage() {
 
           <Separator />
 
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <Eyebrow tone="muted">Onchain</Eyebrow>
+              {vm.onchain ? (
+                <Badge variant={vm.onchain.status === 'confirmed' ? 'success' : 'warning'}>
+                  {vm.onchain.status === 'confirmed' ? 'Verified' : 'Pending'}
+                </Badge>
+              ) : vm.onchainLoading ? (
+                <span className="text-xs text-muted-foreground">checking…</span>
+              ) : (
+                <Badge variant="ghost">offchain</Badge>
+              )}
+            </div>
+
+            {vm.onchain ? (
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Tx</span>
+                  <a
+                    href={vm.onchain.txExplorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs text-accent hover:underline"
+                  >
+                    {vm.onchain.txHash.slice(0, 10)}…{vm.onchain.txHash.slice(-4)}
+                  </a>
+                </div>
+                {vm.onchain.registryListingId !== undefined && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Registry id</span>
+                    <span className="font-mono text-xs">#{vm.onchain.registryListingId}</span>
+                  </div>
+                )}
+                {vm.onchain.registryAddress && vm.onchain.registryExplorerUrl && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Registry</span>
+                    <a
+                      href={vm.onchain.registryExplorerUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-xs text-accent hover:underline"
+                    >
+                      {vm.onchain.registryAddress.slice(0, 6)}…
+                      {vm.onchain.registryAddress.slice(-4)}
+                    </a>
+                  </div>
+                )}
+                {vm.onchain.confirmedAt && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Confirmed</span>
+                    <span className="tabular text-xs">
+                      {new Date(vm.onchain.confirmedAt).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              !vm.onchainLoading && (
+                <p className="text-xs text-muted-foreground">
+                  This workflow is not registered onchain. Publish from the marketplace to mint a
+                  listing.
+                </p>
+              )
+            )}
+          </div>
+
+          <Separator />
+
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Owner</span>

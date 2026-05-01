@@ -6,6 +6,7 @@ import {
   type Workflow,
   type WorkflowStatus,
   useForkWorkflow,
+  useMarketplaceList,
   usePauseWorkflow,
   useResumeWorkflow,
   useRunWorkflow,
@@ -14,8 +15,21 @@ import {
   useWorkflowStatus,
 } from '@/api';
 import type { BadgeProps } from '@/components/ui/badge';
+import { explorerAddressUrl, explorerTxUrl } from '@/lib/constants';
 import { protocolFromTemplateId } from '@/lib/view-models';
 import { toast } from '@/store/toast-store';
+
+export interface WorkflowOnchain {
+  status: 'pending' | 'confirmed';
+  txHash: string;
+  txExplorerUrl: string;
+  contentHash: string;
+  uri: string;
+  registryListingId: number | undefined;
+  confirmedAt: number | undefined;
+  registryAddress: string | undefined;
+  registryExplorerUrl: string | undefined;
+}
 
 type StatusBadge = NonNullable<BadgeProps['variant']>;
 
@@ -47,6 +61,8 @@ export interface WorkflowDetailVM {
   liveStatusLoading: boolean;
   executions: Execution[];
   executionsLoading: boolean;
+  onchain: WorkflowOnchain | undefined;
+  onchainLoading: boolean;
   mutations: {
     run: { trigger: () => void; isPending: boolean };
     pause: { trigger: () => void; isPending: boolean };
@@ -75,6 +91,28 @@ export function useWorkflowDetailVM(): WorkflowDetailVM {
   const { data: executions = [], isLoading: executionsLoading } = useWorkflowExecutions(id, {
     refetchInterval: EXECUTIONS_POLL_MS,
   });
+
+  const { data: listings = [], isLoading: listingsLoading } = useMarketplaceList(
+    { workflowId: id, limit: 1 },
+    { refetchInterval: STATUS_POLL_MS, enabled: Boolean(id) },
+  );
+  const listing = listings[0];
+  const registryAddress = import.meta.env.VITE_MARKETPLACE_REGISTRY_ADDRESS as string | undefined;
+  const onchain: WorkflowOnchain | undefined = listing?.stats.onchain
+    ? {
+        status: listing.stats.onchain.status,
+        txHash: listing.stats.onchain.txHash,
+        txExplorerUrl: explorerTxUrl(listing.stats.onchain.txHash, listing.workflow.chainId),
+        contentHash: listing.stats.onchain.contentHash,
+        uri: listing.stats.onchain.uri,
+        registryListingId: listing.stats.onchain.registryListingId,
+        confirmedAt: listing.stats.onchain.confirmedAt,
+        registryAddress,
+        registryExplorerUrl: registryAddress
+          ? explorerAddressUrl(registryAddress, listing.workflow.chainId)
+          : undefined,
+      }
+    : undefined;
 
   const runM = useRunWorkflow({
     onSuccess: ({ execution }) =>
@@ -120,6 +158,8 @@ export function useWorkflowDetailVM(): WorkflowDetailVM {
     liveStatusLoading,
     executions,
     executionsLoading,
+    onchain,
+    onchainLoading: listingsLoading,
     mutations: {
       run: {
         trigger: () => workflow && runM.mutate(workflow.id),
