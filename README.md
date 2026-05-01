@@ -3,10 +3,12 @@
 Natural language to DeFi workflow automation with an agent marketplace, anchored
 onchain via a Sepolia `MarketplaceRegistry`.
 
-Built for ETHGlobal. Primary submission is the **KeeperHub** track. The
-ElizaOS plugin and the Sepolia `MarketplaceRegistry` ship as part of the
-system but are not separate prize tracks; we considered Gensyn AXL but did
-not pursue eligibility (see [`docs/approach.md`](./docs/approach.md)).
+Built for ETHGlobal. Two-track submission: **KeeperHub** (workflow lifecycle
+depth) and **Gensyn — Best Application of AXL** (peer-to-peer agent comms
+through two real AXL nodes; see [`examples/axl-agents`](./examples/axl-agents)).
+The ElizaOS plugin and the Sepolia `MarketplaceRegistry` are part of the
+system but not separate prize tracks. See [`docs/approach.md`](./docs/approach.md)
+for the per-track narrative.
 
 For the submission narrative see [`docs/approach.md`](./docs/approach.md). For
 the full system breakdown see [`docs/architecture.md`](./docs/architecture.md).
@@ -32,7 +34,7 @@ For AI usage disclosure see [`docs/ai-usage.md`](./docs/ai-usage.md).
 | Backend | Hono + Zod + Vercel AI SDK + Anthropic Claude Haiku 4.5 |
 | Persistence | Postgres (Supabase) + Prisma 6 |
 | Contracts | Foundry + Solidity 0.8.24 |
-| Agent | `@elizaos/core` v2 alpha plugin (dry-run runtime today) |
+| Agent | `@elizaos/core` v2 alpha plugin (dual-mode: dry-run + opt-in live Sepolia execution) |
 | Tooling | Biome, Vitest, TypeScript |
 
 ## Structure
@@ -47,7 +49,7 @@ packages/
   keeperhub-client/ Typed HTTP client for KeeperHub
   llm/              Natural language → intent (Claude Haiku 4.5)
 plugins/
-  elizaos/          ElizaOS plugin: 5 actions, dry-run only at runtime
+  elizaos/          ElizaOS plugin: 6 actions, dual-mode (dry-run + opt-in live)
 contracts/          Foundry project: MarketplaceRegistry + Lido mocks
 docs/               architecture / approach / ai-usage / api-hooks / design-system
 examples/

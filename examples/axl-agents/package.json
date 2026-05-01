@@ -1,0 +1,20 @@
+{
+  "name": "@loomlabs/example-axl-agents",
+  "version": "0.0.0",
+  "description": "Standalone publisher/receiver agents that communicate over Gensyn AXL.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "publish": "tsx publisher.ts",
+    "receive": "tsx receiver.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@loomlabs/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.2"
+  }
+}

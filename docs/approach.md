@@ -50,37 +50,62 @@ typed, KeeperHub-executed, onchain-anchored DeFi workflow.
   polls KeeperHub's live job status alongside our local execution log. Pause
   / resume / fork are wired against the same client.
 
-- **Plugin shape that is ready for an agent runtime.** The ElizaOS plugin
-  declares an explicit safety manifest (which runtime resources are off-limits
-  and why) and ships AXL envelope drafts plus on-chain `register` calldata
-  for every candidate workflow. Today it operates in dry-run mode; an
-  integrator that supplies a signer and an `LOOMLABS_API_URL` can promote
-  it to live without restructuring the action surface.
+- **Dual-mode ElizaOS plugin with opt-in live execution.** The plugin runs
+  in dry-run by default but flips to a live mode under three explicit gates:
+  `LOOM_API_BASE_URL` for read/write through our API,
+  `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION` for direct on-chain transactions, and
+  a per-call `confirmLiveExecution: true`. In live mode the plugin uses a
+  host-injected signer/reader adapter (no private keys held by the plugin),
+  encodes calldata with `viem.encodeFunctionData`, runs preflight balance and
+  allowance checks, enforces a non-zero Uniswap `amountOutMinimum`, and
+  rejects anything outside Sepolia (chainId 11155111). All thirteen failure
+  paths surface as typed error codes (`MISSING_SIGNER`, `INSUFFICIENT_BALANCE`,
+  `SLIPPAGE_POLICY_VIOLATION`, …) so an agent can react safely.
 
 - **Honest LLM contract.** `extractWorkflowIntent` constrains the model to
   `intentSchema` and is used in two places: the prompt → workflow path on
   the frontend and the agent action surface in the plugin. There is exactly
   one definition of "what counts as a valid intent."
 
+- **Agent-to-agent over Gensyn AXL — actually wired.** Two `gensyn-ai/axl`
+  binaries run side by side; one agent posts a workflow envelope to its
+  local AXL node via `POST /send`, the AXL mesh routes the bytes to the
+  other node, and a second agent polls `GET /recv`, verifies the SHA-256
+  content hash, and (with `ENABLE_AXL_AGENT_EXECUTION=true`) hands the
+  workflow off to the Loom API for deployment through KeeperHub. With
+  `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` the receiver also publishes
+  the deployed workflow with the tags `axl-agent` and `received-via-mesh`,
+  so AXL-discovered listings show up on the production marketplace next
+  to web-published ones — the marketplace card carries a vermilion
+  "via AXL agent" badge to make the source visible. The plugin's
+  `AxlClient` drives the same path from inside ElizaOS. End-to-end demo
+  lives in [`examples/axl-agents`](../examples/axl-agents).
+
 ## Track alignment
 
-We target the **KeeperHub** track as our primary submission.
+We target two tracks: **KeeperHub** as the primary submission, and **Gensyn
+(Best Application of AXL)** as a parallel submission backed by a working
+two-node demo in [`examples/axl-agents`](../examples/axl-agents).
 
 | Track | Where this hits the brief |
 |-------|---------------------------|
-| **KeeperHub** (primary) | `packages/keeperhub-client` is a typed HTTP wrapper around the full lifecycle (deploy, execute, status). The API records every execution in a dedicated `executions` table and surfaces live job status to the UI on a 5s tick; pause/resume are wired with explicit "store-only" semantics where KeeperHub has no native primitive. Empty-`nodes`/`edges` deploy quirk handled (see client comments). The frontend detail page shows runCount, lastRunAt, recent run history, and live KeeperHub job status side by side. |
+| **KeeperHub** | `packages/keeperhub-client` is a typed HTTP wrapper around the full lifecycle (deploy, execute, status). The API records every execution in a dedicated `executions` table and surfaces live job status to the UI on a 5s tick; pause/resume are wired with explicit "store-only" semantics where KeeperHub has no native primitive. Empty-`nodes`/`edges` deploy quirk handled (see client comments). The frontend detail page shows runCount, lastRunAt, recent run history, and live KeeperHub job status side by side. |
+| **Gensyn (AXL)** | Two `gensyn-ai/axl` binaries run side by side; the publisher posts a `loomlabs.axl.v1` workflow envelope with a SHA-256 content hash and `X-Destination-Peer-Id`, the receiver polls `/recv`, decodes the envelope, and (with `ENABLE_AXL_AGENT_EXECUTION=true`) forwards it to the Loom API to deploy through KeeperHub. With `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` the receiver also creates a marketplace listing tagged `axl-agent` — the production marketplace card surfaces this with a "via AXL agent" badge. Both nodes have separate ed25519 identities, separate IPv6 addresses, and separate `api_port` values — communication is genuinely across nodes, not in-process. The plugin's [`AxlClient`](../plugins/elizaos/src/axl-client.ts) drives the same flow from inside ElizaOS via four semi-live actions. |
 
 ### Beyond the track — agent surface and onchain anchoring
 
 These pieces ship as part of the loomlabs system but are not standalone track
 submissions:
 
-- **ElizaOS plugin.** `plugins/elizaos` exposes 5 actions against
+- **ElizaOS plugin.** `plugins/elizaos` exposes 6 actions against
   `@elizaos/core` v2 alpha types. The plugin imports the same templates and
   schemas the rest of the stack uses, so anything an agent describes is the
-  same shape the API and the contract see. ElizaOS is the runtime we chose
-  for the agent-facing surface; it is not a separate prize track for this
-  hackathon.
+  same shape the API and the contract see. It runs dual-mode: dry-run by
+  default for safe local demos, plus opt-in live read/write through our
+  Railway API (`BROWSE_MARKETPLACE`, `CREATE_WORKFLOW` live paths) and
+  opt-in direct Sepolia transactions through `CREATE_WORKFLOW_LIVE` for
+  Aave, Uniswap, and Lido. ElizaOS is the runtime we chose for the
+  agent-facing surface; it is not a separate prize track for this hackathon.
 
 - **Sepolia `MarketplaceRegistry`.** Deployed to
   [`0x42Fb…09CB`](https://sepolia.etherscan.io/address/0x42Fb9D61dDed6491874225e00F5d9D69612D09CB).
@@ -89,16 +114,33 @@ submissions:
   the marketplace UI shows a "Verified on Sepolia" badge once the receipt
   confirms.
 
-### Not pursued: Gensyn AXL prize
+### Gensyn track (Best Application of AXL) — also pursued
 
-We considered the Gensyn AXL track but **do not claim eligibility**. The track
-qualification requires (a) using AXL for inter-agent communication and (b)
-demonstrating communication across separate AXL nodes. Our plugin produces
-AXL `publish` / `discover` envelope *drafts* — correct shape, content hash,
-register calldata — but does not run an AXL node or call `/send` / `/recv`.
-Wiring this up is straightforward future work (the envelope shape is already
-locked in `plugins/elizaos/src/axl-flow.ts`), but it is not part of this
-submission.
+We meet both qualification gates:
+
+1. **Use AXL for inter-agent communication, no central broker replacing
+   what AXL provides.** The publisher script in
+   [`examples/axl-agents/publisher.ts`](../examples/axl-agents) builds a
+   `loomlabs.axl.v1` workflow envelope, computes a SHA-256 content hash,
+   and posts it to its local AXL node via `POST /send` with an
+   `X-Destination-Peer-Id` header. The receiver in
+   [`examples/axl-agents/receiver.ts`](../examples/axl-agents) polls
+   `GET /recv` on its own AXL node, decodes the envelope, and (optionally)
+   forwards it to the Loom API to actually deploy the workflow. Nothing in
+   that path replaces AXL — the loomlabs marketplace is one of two
+   discovery surfaces, not the message bus between agents.
+2. **Communication across separate AXL nodes, not just in-process.** The
+   demo runs two `gensyn-ai/axl` binaries with different ed25519
+   identities, different IPv6 addresses, and different `api_port` values.
+   The publisher hits Node A on `:9002`; the receiver polls Node B on
+   `:9012`. The yggdrasil mesh routes the bytes between them.
+
+The plugin reflects this with semi-live AXL actions backed by
+[`plugins/elizaos/src/axl-client.ts`](../plugins/elizaos/src/axl-client.ts):
+`CHECK_AXL_NODE`, `SEND_AXL_WORKFLOW_DRAFT`, `RECEIVE_AXL_MESSAGES`, and
+`EXECUTE_RECEIVED_AXL_WORKFLOW`. Each call to `executeReceivedWorkflow`
+verifies the envelope's content hash against a stable canonical JSON before
+deploying — agents do not blindly trust whatever the mesh hands them.
 
 ## Demo flow (live)
 
@@ -123,9 +165,16 @@ submission.
 
 We chose to be explicit about what is *not* live so the demo is honest:
 
-- The ElizaOS plugin is dry-run only. The shape is production-ready;
-  the runtime is not. (Roadmap: gate `LOOMLABS_API_URL` env var to enable
-  the live read path.)
+- The ElizaOS plugin's live mode is **opt-in, not the default**. Three
+  layered gates (`LOOM_API_BASE_URL`, `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION`,
+  per-call `confirmLiveExecution: true`) keep dry-run as the safe path so
+  judges can reproduce the plugin without keys or RPC. The same plugin
+  promotes to live with no code changes.
+- AXL integration runs as an **opt-in side channel**, not a replacement
+  for the marketplace API. With `examples/axl-agents` we demonstrate two
+  AXL nodes exchanging real envelopes (and the receiver can deploy the
+  resulting workflow through Loom API), but the default web flow still
+  goes through Sepolia + Postgres for compatibility with non-AXL users.
 - Curator-side approval (`approveListing` on the contract) is implemented
   in Solidity but not exposed in the UI. The on-chain "Approved" state is
   one curator transaction away.

@@ -18,6 +18,7 @@ export interface WorkflowCardData {
     txHash: string;
     explorerUrl: string;
   };
+  axlAgent?: boolean;
 }
 
 const protocolLabel: Record<WorkflowCardData['protocol'], string> = {
@@ -46,6 +47,7 @@ function CardBody({ data, linked }: { data: WorkflowCardData; linked: boolean })
                 {data.verified.status === 'confirmed' ? 'Verified on Sepolia' : 'Onchain pending'}
               </Badge>
             )}
+            {data.axlAgent && <Badge variant="accent">via AXL agent</Badge>}
           </div>
           <h3 className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight text-balance transition-colors duration-std ease-out-expo group-hover:text-accent">
             <span>{data.name}</span>
