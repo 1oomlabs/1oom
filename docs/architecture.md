@@ -40,7 +40,7 @@ packages/
   llm/                  extractWorkflowIntent — Claude Haiku 4.5 + Vercel AI SDK
   keeperhub-client/     KeeperHub HTTP client (deploy/execute/getStatus)
 plugins/
-  elizaos/              ElizaOS plugin: 5 actions, dry-run only at runtime
+  elizaos/              ElizaOS plugin: 6 actions, dual-mode (dry-run + opt-in live)
 contracts/              Foundry project: MarketplaceRegistry, Lido mocks
 docs/                   This directory
 ```
@@ -152,32 +152,77 @@ runtime queries, direct URL (port 5432) for `prisma migrate`.
 - Frontend uses `wagmi` + `viem` for the write call; `walletClient.writeContract`.
 - Receipt parsing decodes the `ListingCreated` event for the registry id.
 
-### ElizaOS (plugin, dry-run only at runtime)
+### ElizaOS plugin — dual-mode (dry-run + opt-in live)
 
-`plugins/elizaos` exposes five actions:
+`plugins/elizaos` exposes six actions, each with explicit dry-run and live
+behaviour:
 
-| Action | Behaviour today |
-|--------|-----------------|
-| `BROWSE_TEMPLATES` | Reads the local template registry — works as advertised |
-| `DESCRIBE_TEMPLATE` | Reads one template — works as advertised |
-| `CREATE_WORKFLOW` | Builds a dry-run workflow candidate locally, no API/chain call |
-| `BROWSE_MARKETPLACE` | Returns dry-run listings synthesised from the local template registry, plus AXL envelope drafts |
-| `CREATE_WORKFLOW_DEMO` | Same as `CREATE_WORKFLOW`, explicit demo namespace |
+| Action | Dry-run (default) | Live (opt-in) |
+|--------|-------------------|---------------|
+| `BROWSE_TEMPLATES` | Reads the local template registry | (same — no live mode) |
+| `DESCRIBE_TEMPLATE` | Reads one template | (same — no live mode) |
+| `BROWSE_MARKETPLACE` | Synthesises demo listings from the local template registry plus AXL envelope drafts | Calls `GET /api/marketplace` against the configured `LOOM_API_BASE_URL` and returns real listings |
+| `CREATE_WORKFLOW` | Builds a dry-run workflow candidate locally | Calls `POST /api/workflows`, deploying through KeeperHub. With `LOOM_ELIZAOS_AUTO_PUBLISH=true`, the resulting workflow is auto-published to `/api/marketplace` |
+| `CREATE_WORKFLOW_DEMO` | Same as `CREATE_WORKFLOW` dry-run, explicit demo namespace | n/a |
+| `CREATE_WORKFLOW_LIVE` | Returns blocked status if any guard fails | Prepares and broadcasts Sepolia transactions for Aave / Uniswap / Lido using a host-injected signer/reader pair |
 
-The plugin advertises `executionMode: DRY_RUN_ONLY` and a safety manifest
-naming the runtime resources it will not touch (signer, RPC, wallet, app API,
-KeeperHub). For each candidate it produces an AXL envelope draft
-(`axlEnvelopeDraft.payload.contentHash`, `route.sendEndpoint: '/send'`, etc.)
-plus on-chain `register` calldata, so an integrator that adds a signer +
-network access can flip the plugin to live without restructuring the action
-shape.
+#### Mode selection gates
 
-### Gensyn AXL (additive, dry-run envelopes)
+Three layered gates control when each surface goes live:
 
-Workflows ship with an `axlFlow` block (protocol metadata + node API map) and
-a canonical-JSON `contentHash`. The plugin does **not** open a connection to
-an AXL node today — `blockedBy: ['no-axl-node', 'no-peer-id', 'dry-run-only']`
-is set explicitly in the plugin response.
+1. **API mode** — `LOOM_API_BASE_URL` env points at our Railway API. Without
+   it, `BROWSE_MARKETPLACE` and `CREATE_WORKFLOW` stay in dry-run regardless
+   of the requested mode.
+2. **Chain mode** — `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION=true` is required
+   for `CREATE_WORKFLOW_LIVE` to even be considered.
+3. **Per-call confirmation** — every live-execution call must pass
+   `confirmLiveExecution: true` in its options. Without it, the action
+   returns a `LIVE_CONFIRMATION_REQUIRED` block.
+
+#### `CREATE_WORKFLOW_LIVE` safety manifest
+
+The live execution path
+(`plugins/elizaos/src/live-execution.ts`) hard-codes the following invariants:
+
+- **Sepolia only.** `chainId !== 11155111` returns `UNSUPPORTED_CHAIN`. No
+  mainnet path exists.
+- **Host-injected adapters.** The plugin never holds a private key. The host
+  passes a `signer` (`sendTransaction`) and a `reader`
+  (`readContract` / `waitForReceipt` / `getNativeBalance`) and the plugin
+  encodes calldata via `viem.encodeFunctionData`.
+- **Metadata gate.** `hasConfirmedMetadata(...)` requires every contract
+  address and ABI fragment in `packages/templates/src/sepolia-metadata.ts`
+  to be `HUMAN_CONFIRMED`. Unconfirmed metadata returns
+  `UNCONFIRMED_METADATA`.
+- **Slippage policy.** Uniswap requires a non-zero `amountOutMinimum`. A
+  zero value returns `SLIPPAGE_POLICY_VIOLATION` before any signer call.
+- **Preflight checks.** Every plan reads ERC20 / native balance and
+  allowance before returning a transaction list. `INSUFFICIENT_BALANCE` is
+  returned ahead of any broadcast.
+- **Per-step error mapping.** Failures fall into one of 13 typed error
+  codes (`MISSING_SIGNER`, `MISSING_READER`, `INVALID_PARAMETERS`,
+  `TRANSACTION_REVERTED`, `POST_CHECK_FAILED`, …). The agent never gets
+  raw exceptions.
+- **Post-checks.** Each template ends with a sanity `readContract` call
+  (e.g. `aTokenBalance`, `tokenOutBalance`, `wstETHBalance`) so the agent
+  can verify the on-chain effect.
+
+Three live templates are wired:
+
+| Template | Live plan |
+|----------|-----------|
+| `aave-recurring-deposit` | (optional) `ERC20.approve` → `AavePool.supply` → check `aToken.balanceOf` |
+| `uniswap-dca` | (optional) `ERC20.approve` → `UniswapRouter.exactInputSingle` (slippage gated) → check `tokenOut.balanceOf` |
+| `lido-stake` | `MockLido.submit` (with native ETH value) → (optional) `MockStETH.approve` → `MockWstETH.wrap` → check `wstETH.balanceOf` |
+
+### Gensyn AXL — envelope shape only, no node communication
+
+`plugins/elizaos/src/axl-flow.ts` produces an AXL `axlFlow` block (protocol
+metadata + node API map), a canonical-JSON `contentHash`, and a `publish` /
+`discover` envelope draft alongside on-chain `register` calldata. The plugin
+does **not** open a connection to an AXL node — `blockedBy: ['no-axl-node',
+'no-peer-id', 'dry-run-only']` is set explicitly. The Sepolia live
+execution we ship is direct `viem`, not AXL-routed messaging.
 
 ## Templates
 
@@ -226,9 +271,16 @@ without hitting the chain.
 ## Intentional limitations (be honest in demo)
 
 - **3 templates only.** New protocols require a code PR.
-- **ElizaOS plugin is dry-run only.** It exposes the right shape (actions,
-  envelopes, register calldata) but does not call the API, KeeperHub, or
-  the chain. A live mode is straightforward to add but not in scope today.
+- **ElizaOS live execution is opt-in, not the default.** Three explicit
+  gates (`LOOM_API_BASE_URL`, `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION`, and
+  per-call `confirmLiveExecution: true`) must all be set before the plugin
+  touches anything off-host. Without them every action stays in dry-run.
+  This is intentional: judging is reproducible without keys or RPC, while
+  an integrator with a wallet can promote the same plugin to live without
+  code changes.
+- **No AXL node communication.** The plugin emits AXL envelope drafts
+  with canonical content hashes but does not run an AXL node or call
+  `/send` / `/recv` (see "Not pursued" in `approach.md`).
 - **Curator approval not exposed.** Listings register as `Pending` on-chain
   and our DB flips to `confirmed` once the tx is mined; the curator's
   `approveListing` step is implemented in the contract but not surfaced in

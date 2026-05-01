@@ -32,7 +32,7 @@ For AI usage disclosure see [`docs/ai-usage.md`](./docs/ai-usage.md).
 | Backend | Hono + Zod + Vercel AI SDK + Anthropic Claude Haiku 4.5 |
 | Persistence | Postgres (Supabase) + Prisma 6 |
 | Contracts | Foundry + Solidity 0.8.24 |
-| Agent | `@elizaos/core` v2 alpha plugin (dry-run runtime today) |
+| Agent | `@elizaos/core` v2 alpha plugin (dual-mode: dry-run + opt-in live Sepolia execution) |
 | Tooling | Biome, Vitest, TypeScript |
 
 ## Structure
@@ -47,7 +47,7 @@ packages/
   keeperhub-client/ Typed HTTP client for KeeperHub
   llm/              Natural language → intent (Claude Haiku 4.5)
 plugins/
-  elizaos/          ElizaOS plugin: 5 actions, dry-run only at runtime
+  elizaos/          ElizaOS plugin: 6 actions, dual-mode (dry-run + opt-in live)
 contracts/          Foundry project: MarketplaceRegistry + Lido mocks
 docs/               architecture / approach / ai-usage / api-hooks / design-system
 examples/

@@ -49,8 +49,10 @@ review surfaces. None of them runs at product runtime.
   TanStack Router `validateSearch`.
 - Backend persistence migration from in-memory Map to Postgres via
   Prisma, including idempotent migration generation and the seed script.
-- ElizaOS plugin shape — action types, dry-run safety manifest, and AXL
-  envelope draft helpers.
+- ElizaOS plugin shape — action types, dual-mode (dry-run + opt-in live)
+  routing, AXL envelope draft helpers, and the `live-execution.ts`
+  Sepolia-only plan/preflight/error-mapping module that prepares Aave,
+  Uniswap, and Lido transactions through host-injected adapters.
 - Schema design for `executions`, the `runCount`/`lastRunAt` denormalised
   columns, and the `recordRun` Prisma transaction.
 - Iterative prompt engineering for `extractWorkflowIntent` — including

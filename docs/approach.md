@@ -50,12 +50,17 @@ typed, KeeperHub-executed, onchain-anchored DeFi workflow.
   polls KeeperHub's live job status alongside our local execution log. Pause
   / resume / fork are wired against the same client.
 
-- **Plugin shape that is ready for an agent runtime.** The ElizaOS plugin
-  declares an explicit safety manifest (which runtime resources are off-limits
-  and why) and ships AXL envelope drafts plus on-chain `register` calldata
-  for every candidate workflow. Today it operates in dry-run mode; an
-  integrator that supplies a signer and an `LOOMLABS_API_URL` can promote
-  it to live without restructuring the action surface.
+- **Dual-mode ElizaOS plugin with opt-in live execution.** The plugin runs
+  in dry-run by default but flips to a live mode under three explicit gates:
+  `LOOM_API_BASE_URL` for read/write through our API,
+  `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION` for direct on-chain transactions, and
+  a per-call `confirmLiveExecution: true`. In live mode the plugin uses a
+  host-injected signer/reader adapter (no private keys held by the plugin),
+  encodes calldata with `viem.encodeFunctionData`, runs preflight balance and
+  allowance checks, enforces a non-zero Uniswap `amountOutMinimum`, and
+  rejects anything outside Sepolia (chainId 11155111). All thirteen failure
+  paths surface as typed error codes (`MISSING_SIGNER`, `INSUFFICIENT_BALANCE`,
+  `SLIPPAGE_POLICY_VIOLATION`, …) so an agent can react safely.
 
 - **Honest LLM contract.** `extractWorkflowIntent` constrains the model to
   `intentSchema` and is used in two places: the prompt → workflow path on
@@ -75,12 +80,15 @@ We target the **KeeperHub** track as our primary submission.
 These pieces ship as part of the loomlabs system but are not standalone track
 submissions:
 
-- **ElizaOS plugin.** `plugins/elizaos` exposes 5 actions against
+- **ElizaOS plugin.** `plugins/elizaos` exposes 6 actions against
   `@elizaos/core` v2 alpha types. The plugin imports the same templates and
   schemas the rest of the stack uses, so anything an agent describes is the
-  same shape the API and the contract see. ElizaOS is the runtime we chose
-  for the agent-facing surface; it is not a separate prize track for this
-  hackathon.
+  same shape the API and the contract see. It runs dual-mode: dry-run by
+  default for safe local demos, plus opt-in live read/write through our
+  Railway API (`BROWSE_MARKETPLACE`, `CREATE_WORKFLOW` live paths) and
+  opt-in direct Sepolia transactions through `CREATE_WORKFLOW_LIVE` for
+  Aave, Uniswap, and Lido. ElizaOS is the runtime we chose for the
+  agent-facing surface; it is not a separate prize track for this hackathon.
 
 - **Sepolia `MarketplaceRegistry`.** Deployed to
   [`0x42Fb…09CB`](https://sepolia.etherscan.io/address/0x42Fb9D61dDed6491874225e00F5d9D69612D09CB).
@@ -89,15 +97,17 @@ submissions:
   the marketplace UI shows a "Verified on Sepolia" badge once the receipt
   confirms.
 
-### Not pursued: Gensyn AXL prize
+### Not pursued: Gensyn track (Best Application of AXL)
 
-We considered the Gensyn AXL track but **do not claim eligibility**. The track
-qualification requires (a) using AXL for inter-agent communication and (b)
-demonstrating communication across separate AXL nodes. Our plugin produces
-AXL `publish` / `discover` envelope *drafts* — correct shape, content hash,
-register calldata — but does not run an AXL node or call `/send` / `/recv`.
-Wiring this up is straightforward future work (the envelope shape is already
-locked in `plugins/elizaos/src/axl-flow.ts`), but it is not part of this
+We considered Gensyn's *Best Application of Agent eXchange Layer (AXL)*
+prize but **do not claim eligibility**. The qualification requires (a)
+using AXL for inter-agent communication and (b) demonstrating communication
+across separate AXL nodes. Our plugin produces AXL `publish` / `discover`
+envelope *drafts* — correct shape, canonical content hash, register
+calldata — in `plugins/elizaos/src/axl-flow.ts`, but it does not run an
+AXL node or call `/send` / `/recv`. The on-chain Sepolia execution we ship
+is direct `viem` transactions, not AXL-routed messaging. Wiring this up to
+a real AXL node is straightforward future work, but it is not part of this
 submission.
 
 ## Demo flow (live)
@@ -123,9 +133,14 @@ submission.
 
 We chose to be explicit about what is *not* live so the demo is honest:
 
-- The ElizaOS plugin is dry-run only. The shape is production-ready;
-  the runtime is not. (Roadmap: gate `LOOMLABS_API_URL` env var to enable
-  the live read path.)
+- The ElizaOS plugin's live mode is **opt-in, not the default**. Three
+  layered gates (`LOOM_API_BASE_URL`, `LOOM_ENABLE_SEPOLIA_LIVE_EXECUTION`,
+  per-call `confirmLiveExecution: true`) keep dry-run as the safe path so
+  judges can reproduce the plugin without keys or RPC. The same plugin
+  promotes to live with no code changes.
+- The plugin does **not** call an AXL node. AXL `publish` / `discover`
+  envelope drafts are produced (correct shape, canonical content hash,
+  register calldata) but `/send` / `/recv` are not invoked.
 - Curator-side approval (`approveListing` on the contract) is implemented
   in Solidity but not exposed in the UI. The on-chain "Approved" state is
   one curator transaction away.
