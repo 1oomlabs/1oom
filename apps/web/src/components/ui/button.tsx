@@ -5,12 +5,14 @@ import { forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors duration-std ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-[color,background-color,box-shadow,transform] duration-std ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/85',
-        accent: 'bg-accent text-accent-foreground hover:bg-accent/90 active:bg-accent/85',
+        default:
+          'bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:bg-primary/92 hover:shadow-md hover:shadow-primary/30 active:translate-y-px active:bg-primary/85',
+        accent:
+          'bg-accent text-accent-foreground shadow-sm shadow-accent/25 hover:bg-accent/92 hover:shadow-md hover:shadow-accent/30 active:translate-y-px active:bg-accent/86',
         outline:
           'border border-border bg-transparent text-foreground hover:bg-secondary hover:text-secondary-foreground',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',

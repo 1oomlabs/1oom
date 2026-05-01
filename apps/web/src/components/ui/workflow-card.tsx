@@ -13,6 +13,11 @@ export interface WorkflowCardData {
   price?: { amount: string; token: string } | 'free';
   installs: number;
   runs: number;
+  verified?: {
+    status: 'pending' | 'confirmed';
+    txHash: string;
+    explorerUrl: string;
+  };
 }
 
 const protocolLabel: Record<WorkflowCardData['protocol'], string> = {
@@ -34,9 +39,14 @@ function CardBody({ data, linked }: { data: WorkflowCardData; linked: boolean })
     <>
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <Badge variant="outline" className="self-start">
-            {protocolLabel[data.protocol]}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{protocolLabel[data.protocol]}</Badge>
+            {data.verified && (
+              <Badge variant={data.verified.status === 'confirmed' ? 'success' : 'warning'}>
+                {data.verified.status === 'confirmed' ? 'Verified on Sepolia' : 'Onchain pending'}
+              </Badge>
+            )}
+          </div>
           <h3 className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight text-balance transition-colors duration-std ease-out-expo group-hover:text-accent">
             <span>{data.name}</span>
             {linked && (

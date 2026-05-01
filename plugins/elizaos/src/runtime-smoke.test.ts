@@ -6,6 +6,7 @@ import {
   templates as templateRegistry,
 } from '@loomlabs/templates';
 
+import { runApiClientSmokeTests } from './api-client.test';
 import {
   AxlClient,
   type AxlRequestInit,
@@ -15,6 +16,7 @@ import {
 import { createAxlPublishDraft } from './axl-flow';
 import { runElizaOsRuntimeLoadingTest } from './elizaos-runtime-loading.test';
 import loomPlugin from './index';
+import { runLiveExecutionSmokeTests } from './live-execution.test';
 import { runPhase1ElizaOsSmokeTests } from './phase-1-smoke.test';
 
 declare const console: {
@@ -36,6 +38,8 @@ type RuntimeSmokeResult = {
   integrationCases: string[];
   runtimeLoading: Awaited<ReturnType<typeof runElizaOsRuntimeLoadingTest>>;
   phase1Passed: number;
+  apiClientCases: string[];
+  liveExecutionCases: string[];
 };
 
 type TemplateSummary = {
@@ -652,7 +656,7 @@ function assertLidoMockContracts(template: TemplateSummary): void {
     'MockWstETH',
     '0x800AB7B237F8Bf9639c0E9127756a5b9049D0C73',
     '0xE1264e5AADb69A27bE594aaafc502D654FFbaC97',
-    '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+    '0xc4936b9baA6E09a5Aa39dCE7001d24aAE84E97fF',
   ]) {
     assert(serialized.includes(expected), `Lido response must include ${expected}`);
   }
@@ -780,6 +784,34 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
       `${action.name} validate must pass for dry-run smoke input`,
     );
 
+    if (action.name === 'CREATE_WORKFLOW_LIVE') {
+      const result = await action.handler(
+        mockRuntime,
+        mockMessage('templateId=lido-stake'),
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
+      const data = getDataRecord(result);
+
+      assert(result?.success === false, 'CREATE_WORKFLOW_LIVE must return a blocked result');
+      assert(
+        result.error === 'LIVE_EXECUTION_DISABLED',
+        'CREATE_WORKFLOW_LIVE must be disabled by default',
+      );
+      assert(
+        data.executionMode === 'dry-run-only',
+        'CREATE_WORKFLOW_LIVE must preserve dry-run default',
+      );
+      assert(
+        data.requestedExecutionMode === 'live-run',
+        'CREATE_WORKFLOW_LIVE must require explicit live-run',
+      );
+      assertDryRunSafety(action.name, result);
+      continue;
+    }
+
     if ((dryRunActionNames as readonly string[]).includes(action.name)) {
       const result = await action.handler(
         mockRuntime,
@@ -889,7 +921,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   }
 
   const intentCases: Array<[string, string]> = [
-    ['deposit DAI to Aave', 'aave-recurring-deposit'],
+    ['deposit LINK to Aave', 'aave-recurring-deposit'],
     ['DCA USDC to WETH', 'uniswap-dca'],
     ['stake ETH with Lido', 'lido-stake'],
   ];
@@ -933,11 +965,19 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   const runtimeLoading = await runElizaOsRuntimeLoadingTest();
   integrationCases.push(...runtimeLoading.runtimeCases);
 
+  const apiClientCases = await runApiClientSmokeTests();
+  integrationCases.push(...apiClientCases);
+
+  const liveExecutionCases = await runLiveExecutionSmokeTests();
+  integrationCases.push(...liveExecutionCases);
+
   return {
     actionNames,
     integrationCases,
     runtimeLoading,
     phase1Passed: phase1.passed.length,
+    apiClientCases,
+    liveExecutionCases,
   };
 }
 

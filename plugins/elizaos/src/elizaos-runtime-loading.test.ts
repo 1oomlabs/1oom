@@ -45,6 +45,7 @@ const expectedActionNames = [
   'SEND_AXL_WORKFLOW_DRAFT',
   'RECEIVE_AXL_MESSAGES',
   'EXECUTE_RECEIVED_AXL_WORKFLOW',
+  'CREATE_WORKFLOW_LIVE',
 ] as const;
 
 function assert(condition: unknown, message: string): asserts condition {
