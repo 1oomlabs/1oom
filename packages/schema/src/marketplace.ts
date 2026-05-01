@@ -22,6 +22,16 @@ export const marketplaceListingSchema = z.object({
     .object({
       installs: z.number().int().default(0),
       runs: z.number().int().default(0),
+      onchain: z
+        .object({
+          status: z.enum(['pending', 'confirmed']).default('pending'),
+          txHash: z.string(),
+          contentHash: z.string(),
+          uri: z.string(),
+          registryListingId: z.number().int().optional(),
+          confirmedAt: z.number().int().optional(),
+        })
+        .optional(),
     })
     .default({ installs: 0, runs: 0 }),
   createdAt: z.number().int(),

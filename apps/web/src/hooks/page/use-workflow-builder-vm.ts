@@ -1,9 +1,11 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useAccount, useChainId } from 'wagmi';
+import { type Address, decodeEventLog, keccak256, toHex } from 'viem';
+import { useAccount, useChainId, usePublicClient, useWalletClient } from 'wagmi';
 
 import {
   type CreateWorkflowRequest,
   type Intent,
+  useConfirmMarketplaceListing,
   useCreateWorkflow,
   useExtractIntent,
   useInvalidateMarketplace,
@@ -42,6 +44,34 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   const navigate = useNavigate();
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient({ chainId: chainId ?? DEFAULT_CHAIN_ID });
+
+  const registryAddress = import.meta.env.VITE_MARKETPLACE_REGISTRY_ADDRESS as Address | undefined;
+
+  const marketplaceRegistryAbi = [
+    {
+      type: 'function',
+      name: 'register',
+      stateMutability: 'nonpayable',
+      inputs: [
+        { name: 'contentHash', type: 'bytes32' },
+        { name: 'uri', type: 'string' },
+      ],
+      outputs: [{ name: 'id', type: 'uint256' }],
+    },
+    {
+      type: 'event',
+      name: 'ListingCreated',
+      inputs: [
+        { name: 'id', type: 'uint256', indexed: true },
+        { name: 'author', type: 'address', indexed: true },
+        { name: 'contentHash', type: 'bytes32', indexed: false },
+        { name: 'uri', type: 'string', indexed: false },
+      ],
+      anonymous: false,
+    },
+  ] as const;
 
   const prompt = useDraftStore((s) => s.prompt);
   const intent = useDraftStore((s) => s.intent);
@@ -57,6 +87,7 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   });
 
   const invalidateMarketplace = useInvalidateMarketplace();
+  const confirmListing = useConfirmMarketplaceListing();
   const publish = usePublishToMarketplace({
     onSuccess: async (listing) => {
       toast.success('Published to marketplace', listing.id.slice(0, 8));
@@ -70,19 +101,99 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   });
 
   const create = useCreateWorkflow<CreateWorkflowRequest>({
-    onSuccess: (workflow) => {
+    onSuccess: async (workflow) => {
       toast.success('Workflow deployed', `Job ${workflow.id.slice(0, 8)} on KeeperHub`);
 
       // 백엔드 스키마대로 marketplace publish 연결 (기본 free)
       // agent:<id> 태그를 함께 붙여 agent profile 페이지 필터에 잡히게 함
       if (address) {
         const protocol = protocolFromTemplateId(workflow.templateId);
-        publish.mutate({
+        const workflowUri = `${window.location.origin}/workflows/${workflow.id}`;
+        const contentHash = keccak256(toHex(JSON.stringify(workflow)));
+        let txHash: `0x${string}` | undefined;
+        let registryListingId: number | undefined;
+
+        if (registryAddress && walletClient && publicClient) {
+          try {
+            txHash = await walletClient.writeContract({
+              address: registryAddress,
+              abi: marketplaceRegistryAbi,
+              functionName: 'register',
+              args: [contentHash, workflowUri],
+              chain: publicClient.chain,
+              account: address,
+            });
+            toast.success('Onchain listing submitted', txHash.slice(0, 10));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'wallet transaction rejected';
+            toast.error('Onchain register failed', message);
+            navigate({ to: '/workflows/$id', params: { id: workflow.id } });
+            return;
+          }
+        } else {
+          toast.warning(
+            'Onchain register skipped',
+            'Missing registry address or wallet client (check env + wallet).',
+          );
+        }
+
+        const listing = await publish.mutateAsync({
           workflowId: workflow.id,
           author: address,
           tags: [protocol, workflow.templateId, agentTag(CURRENT_AGENT_ID)],
           pricing: DEFAULT_PUBLISH_PRICING,
+          ...(txHash
+            ? {
+                onchain: {
+                  status: 'pending',
+                  txHash,
+                  contentHash,
+                  uri: workflowUri,
+                },
+              }
+            : {}),
         });
+
+        if (txHash && publicClient) {
+          try {
+            const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+            const createdLog = receipt.logs.find((log) => {
+              try {
+                const decoded = decodeEventLog({
+                  abi: marketplaceRegistryAbi,
+                  data: log.data,
+                  topics: log.topics,
+                });
+                return decoded.eventName === 'ListingCreated';
+              } catch {
+                return false;
+              }
+            });
+            if (createdLog) {
+              const decoded = decodeEventLog({
+                abi: marketplaceRegistryAbi,
+                data: createdLog.data,
+                topics: createdLog.topics,
+              });
+              if (decoded.eventName === 'ListingCreated') {
+                registryListingId = Number(decoded.args.id);
+              }
+            }
+
+            await confirmListing.mutateAsync({
+              id: listing.id,
+              body: {
+                registryListingId,
+                confirmedAt: Date.now(),
+              },
+            });
+            await invalidateMarketplace();
+            toast.success('Onchain listing confirmed');
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'could not confirm receipt';
+            toast.warning('Listing pending confirmation', message);
+          }
+        }
       }
 
       reset();

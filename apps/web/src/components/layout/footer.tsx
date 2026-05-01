@@ -52,6 +52,17 @@ export function Footer() {
     <footer className="mt-32 border-t border-border bg-surface-subtle">
       <div className="container-wide grid grid-cols-2 gap-12 py-16 md:grid-cols-5">
         <div className="col-span-2">
+          <div className="mb-4 inline-flex items-center gap-2.5">
+            <img
+              src="/logo-transparent.png"
+              alt=""
+              aria-hidden
+              className="h-7 w-7 object-contain"
+              loading="lazy"
+              decoding="async"
+            />
+            <span className="font-display text-lg font-semibold tracking-tight">Loomlabs</span>
+          </div>
           <p className="font-display text-2xl font-semibold tracking-tight text-balance">
             From a sentence to a deployed DeFi automation.
           </p>

@@ -122,6 +122,17 @@ export function ConnectWalletButton({ className }: { className?: string }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
+          <div className="mb-1 inline-flex items-center gap-2 text-foreground">
+            <img
+              src="/logo-transparent.png"
+              alt=""
+              aria-hidden
+              className="h-5 w-5 object-contain"
+              loading="lazy"
+              decoding="async"
+            />
+            <span className="font-display text-sm font-semibold tracking-tight">Loomlabs</span>
+          </div>
           <DialogTitle>Connect a wallet</DialogTitle>
           <DialogDescription>
             Pick a connector. We support Sepolia (default) and Ethereum mainnet.
