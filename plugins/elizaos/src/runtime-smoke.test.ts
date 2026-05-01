@@ -6,6 +6,7 @@ import {
   templates as templateRegistry,
 } from '@loomlabs/templates';
 
+import { runApiClientSmokeTests } from './api-client.test';
 import { runElizaOsRuntimeLoadingTest } from './elizaos-runtime-loading.test';
 import loomPlugin from './index';
 import { runLiveExecutionSmokeTests } from './live-execution.test';
@@ -30,6 +31,7 @@ type RuntimeSmokeResult = {
   integrationCases: string[];
   runtimeLoading: Awaited<ReturnType<typeof runElizaOsRuntimeLoadingTest>>;
   phase1Passed: number;
+  apiClientCases: string[];
   liveExecutionCases: string[];
 };
 
@@ -570,6 +572,9 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
   const runtimeLoading = await runElizaOsRuntimeLoadingTest();
   integrationCases.push(...runtimeLoading.runtimeCases);
 
+  const apiClientCases = await runApiClientSmokeTests();
+  integrationCases.push(...apiClientCases);
+
   const liveExecutionCases = await runLiveExecutionSmokeTests();
   integrationCases.push(...liveExecutionCases);
 
@@ -578,6 +583,7 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     integrationCases,
     runtimeLoading,
     phase1Passed: phase1.passed.length,
+    apiClientCases,
     liveExecutionCases,
   };
 }

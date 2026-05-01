@@ -273,6 +273,8 @@ export async function runLiveExecutionSmokeTests(): Promise<string[]> {
       undefined,
       {
         parameters: {
+          owner: account,
+          chainId: 11155111,
           signer: envModeSigner,
           reader: createFakeReader(),
           parameters: { token: link, amount: '1000000000000000000' },
@@ -282,17 +284,24 @@ export async function runLiveExecutionSmokeTests(): Promise<string[]> {
       [],
     );
 
-    assert(envModeResult?.success === true, 'CREATE_WORKFLOW must honor live-run env mode');
     assert(
-      envModeSigner.sent.length === 2,
-      'env live-run CREATE_WORKFLOW must broadcast Aave plan',
+      envModeResult?.success === false,
+      'CREATE_WORKFLOW live-run must require app API config',
+    );
+    assert(
+      envModeResult?.error === 'API_BASE_URL_REQUIRED',
+      'CREATE_WORKFLOW live-run must route through app API first',
+    );
+    assert(
+      envModeSigner.sent.length === 0,
+      'CREATE_WORKFLOW live-run must not bypass app API to broadcast directly',
     );
   } finally {
     process.env[EXECUTION_MODE_ENV_VAR] = modeBefore;
     process.env[LIVE_EXECUTION_FEATURE_FLAG] = featureBefore;
     process.env[LIVE_CONFIRMATION_ENV_VAR] = confirmationBefore;
   }
-  passed.push('CREATE_WORKFLOW switches to live-run from environment variables');
+  passed.push('CREATE_WORKFLOW live-run routes through app API before tx execution');
 
   const directGuardCases = runLiveExecutionGuardTests();
   passed.push(...directGuardCases);

@@ -4,9 +4,11 @@
 
 이 문서는 현재 구현된 `packages/templates`와 `plugins/elizaos`의 dry-run 통합 계약을 정리합니다. 다른 팀은 이 문서를 기준으로 템플릿 조회, Sepolia metadata 조회, ElizaOS action 호출, marketplace 표시 연동을 진행하면 됩니다.
 
-기본 범위는 **dry-run demo first**입니다. 실제 private key, KeeperHub deploy, API 호출은 지원하지 않습니다.
+기본 범위는 **dry-run demo first**입니다. 기본 설정에서는 실제 private key,
+KeeperHub deploy, API 호출을 수행하지 않습니다.
 단, `CREATE_WORKFLOW_LIVE`는 host가 signer/read adapter를 명시적으로 주입한 경우에만 Sepolia
-transaction을 실행할 수 있는 opt-in 경로를 제공합니다.
+transaction을 실행할 수 있는 opt-in 경로를 제공합니다. 또한 `live-run`으로 전환하면
+ElizaOS agent가 실제 Loomlabs API의 marketplace/workflow endpoint를 호출할 수 있습니다.
 
 ## 공통 원칙
 
@@ -16,6 +18,8 @@ transaction을 실행할 수 있는 opt-in 경로를 제공합니다.
 - 기본 실행 응답은 `executionMode: 'dry-run-only'`를 포함해야 합니다.
 - live execution은 `CREATE_WORKFLOW_LIVE`에서만 가능하며 feature flag, confirmation, signer,
   reader가 모두 필요합니다.
+- app API 연동은 `LOOM_ELIZAOS_EXECUTION_MODE=live-run`에서만 동작합니다.
+- `LOOM_API_BASE_URL` 없이는 live-run API 호출이 차단됩니다.
 
 ## Template ID
 
@@ -190,6 +194,105 @@ CREATE_WORKFLOW_LIVE
 - `ActionResult` 반환
 - `success`, `text`, `data` 포함
 - 실제 transaction 실행 없음
+
+## App API 연동 계약
+
+ElizaOS 담당 영역에서 app API를 호출할 때는 `plugins/elizaos`만 수정합니다.
+`apps/api` endpoint 계약은 읽기 전용으로 사용합니다.
+별도 API 전용 모드는 두지 않고 `dry-run` / `live-run` 두 모드만 사용합니다.
+
+### Marketplace 조회
+
+환경변수:
+
+```bash
+LOOM_ELIZAOS_EXECUTION_MODE=live-run
+LOOM_API_BASE_URL=http://localhost:8787
+```
+
+호출:
+
+```ts
+BROWSE_MARKETPLACE
+```
+
+실제 요청:
+
+```txt
+GET /api/marketplace?tag=&author=&protocol=&sort=&limit=
+```
+
+응답은 그대로 `data.items`, `data.total`, `data.source: 'api'`로 노출합니다.
+`dry-run` 기본값은 계속 `local-demo-registry`입니다.
+
+### Workflow 생성
+
+환경변수:
+
+```bash
+LOOM_ELIZAOS_EXECUTION_MODE=live-run
+LOOM_API_BASE_URL=http://localhost:8787
+```
+
+호출:
+
+```ts
+CREATE_WORKFLOW
+```
+
+handler options:
+
+```ts
+{
+  parameters: {
+    owner: '0x...',
+    chainId: 11155111
+  }
+}
+```
+
+실제 요청:
+
+```txt
+POST /api/workflows
+```
+
+body:
+
+```json
+{
+  "prompt": "deposit LINK to Aave",
+  "owner": "0x...",
+  "chainId": 11155111
+}
+```
+
+### Marketplace 게시
+
+자동 게시가 필요하면 아래 값을 켭니다.
+
+```bash
+LOOM_ELIZAOS_AUTO_PUBLISH=true
+```
+
+`CREATE_WORKFLOW`가 `POST /api/workflows` 성공 후 `workflow.id`를 사용해 다음 요청을 보냅니다.
+
+```txt
+POST /api/marketplace
+```
+
+body:
+
+```json
+{
+  "workflowId": "workflow-id",
+  "author": "0x...",
+  "tags": ["agent-created"],
+  "pricing": { "type": "free" }
+}
+```
+
+`author`, `tags`, `pricing`은 handler options의 `parameters`에서 전달합니다.
 
 ## Gensyn AXL dry-run flow
 

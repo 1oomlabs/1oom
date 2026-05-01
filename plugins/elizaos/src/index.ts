@@ -6,6 +6,15 @@ import {
   templates,
 } from '@loomlabs/templates';
 
+import {
+  API_BASE_URL_ENV_VAR,
+  AUTO_PUBLISH_ENV_VAR,
+  type ApiFailure,
+  type PricingInput,
+  createWorkflowFromApi,
+  listMarketplaceFromApi,
+  publishWorkflowToMarketplace,
+} from './api-client';
 import { createAxlDiscoveryMetadata, createAxlPublishDraft } from './axl-flow';
 import type { AxlPublishDraft } from './axl-flow';
 import {
@@ -15,12 +24,17 @@ import {
   executeLiveExecutionRequest,
 } from './live-execution';
 
+export {
+  API_BASE_URL_ENV_VAR,
+  AUTO_PUBLISH_ENV_VAR,
+} from './api-client';
+
 /**
  * ElizaOS plugin surface.
  *
  * Exposes demo-safe actions to agents:
- *   1. CREATE_WORKFLOW - turn a natural-language prompt into dry-run or env-selected live workflow handling.
- *   2. BROWSE_MARKETPLACE - discover marketplace entries without network calls.
+ *   1. CREATE_WORKFLOW - turn a natural-language prompt into dry-run, API-backed, or live workflow handling.
+ *   2. BROWSE_MARKETPLACE - discover local marketplace entries or opt-in app API listings.
  *   3. BROWSE_TEMPLATES - list local templates and Sepolia metadata status.
  *   4. DESCRIBE_TEMPLATE - describe one local template and its Sepolia demo metadata.
  *   5. CREATE_WORKFLOW_DEMO - create a dry-run demo workflow candidate only.
@@ -259,6 +273,19 @@ function dryRunSafetyPayload() {
   };
 }
 
+function apiBackedSafetyPayload() {
+  return {
+    ...dryRunSafetyPayload(),
+    callsAppApi: true,
+    requiresApiKey: false,
+    executionBlockedBy: [
+      'no-direct-transaction-broadcast',
+      'no-direct-wallet-access',
+      'app-api-handles-workflow-lifecycle',
+    ],
+  };
+}
+
 function createDryRunWorkflowDraft(
   template: ReturnType<typeof summarizeTemplate>,
   intent: DemoIntent,
@@ -410,6 +437,24 @@ function getNumberParameter(parameters: Record<string, unknown>, key: string): n
   return typeof value === 'number' ? value : undefined;
 }
 
+function getBooleanParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function getStringLiteralParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'string' ? value : undefined;
+}
+
 function getStringParameter(
   parameters: Record<string, unknown>,
   key: string,
@@ -439,13 +484,24 @@ function isTruthyConfigValue(value: unknown): boolean {
   return ['1', 'true', 'yes', 'on', 'live', 'live-run'].includes(value.trim().toLowerCase());
 }
 
+function shouldAutoPublish(parameters: Record<string, unknown>): boolean {
+  return (
+    getBooleanParameter(parameters, 'autoPublish') === true ||
+    isTruthyConfigValue(getEnvironmentValue(AUTO_PUBLISH_ENV_VAR))
+  );
+}
+
 function getConfiguredExecutionMode(
   parameters: Record<string, unknown>,
 ): typeof DRY_RUN_ONLY | typeof LIVE_RUN {
   const requestedMode = parameters.executionMode;
 
-  if (requestedMode === LIVE_RUN || requestedMode === DRY_RUN_ONLY) {
-    return requestedMode;
+  if (requestedMode === LIVE_RUN) {
+    return LIVE_RUN;
+  }
+
+  if (requestedMode === DRY_RUN_ONLY || requestedMode === 'dry-run') {
+    return DRY_RUN_ONLY;
   }
 
   return getEnvironmentValue(EXECUTION_MODE_ENV_VAR)?.trim().toLowerCase() === LIVE_RUN
@@ -490,10 +546,170 @@ function toActionData(value: unknown): unknown {
   return value;
 }
 
+function createApiBlockedActionResult(
+  actionName: string,
+  failure: ApiFailure,
+  extraData: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    success: false,
+    text: `${actionName} API call is blocked: ${failure.code}.`,
+    error: failure.code,
+    data: {
+      ok: false,
+      source: 'api',
+      integrationRisk: INTEGRATION_RISK,
+      safety: apiBackedSafetyPayload(),
+      failure,
+      ...extraData,
+    },
+  };
+}
+
+function getStringArrayParameter(parameters: Record<string, unknown>, key: string): string[] {
+  const value = parameters[key];
+
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function getPricingParameter(parameters: Record<string, unknown>): PricingInput | undefined {
+  const value = parameters.pricing;
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const pricing = value as Record<string, unknown>;
+
+  if (pricing.type === 'free') {
+    return { type: 'free' };
+  }
+
+  if (
+    pricing.type === 'x402' &&
+    typeof pricing.amount === 'string' &&
+    typeof pricing.token === 'string'
+  ) {
+    return {
+      type: 'x402',
+      amount: pricing.amount,
+      token: pricing.token,
+    };
+  }
+
+  return undefined;
+}
+
+function getWorkflowId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const id = (value as Record<string, unknown>).id;
+
+  return typeof id === 'string' ? id : undefined;
+}
+
+async function createApiWorkflowActionResult(
+  prompt: string,
+  handlerParameters: Record<string, unknown>,
+): Promise<ActionResult> {
+  const owner = getStringLiteralParameter(handlerParameters, 'owner');
+  const chainId = getNumberParameter(handlerParameters, 'chainId') ?? 11155111;
+
+  if (!owner) {
+    return {
+      success: false,
+      text: 'CREATE_WORKFLOW live-run requires an owner address.',
+      error: 'OWNER_REQUIRED',
+      data: {
+        ok: false,
+        source: 'api',
+        executionMode: LIVE_RUN,
+        integrationRisk: INTEGRATION_RISK,
+        safety: apiBackedSafetyPayload(),
+      },
+    };
+  }
+
+  const workflowResult = await createWorkflowFromApi({
+    apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+    prompt,
+    owner,
+    chainId,
+  });
+
+  if (!workflowResult.ok) {
+    return createApiBlockedActionResult('CREATE_WORKFLOW', workflowResult, {
+      executionMode: LIVE_RUN,
+    });
+  }
+
+  let marketplaceListing: unknown;
+
+  if (shouldAutoPublish(handlerParameters)) {
+    const workflowId = getWorkflowId(workflowResult.data.workflow);
+
+    if (!workflowId) {
+      return {
+        success: false,
+        text: 'CREATE_WORKFLOW live-run cannot publish because workflow.id is missing.',
+        error: 'WORKFLOW_ID_REQUIRED_FOR_PUBLISH',
+        data: {
+          ok: false,
+          source: 'api',
+          executionMode: LIVE_RUN,
+          workflow: workflowResult.data.workflow,
+          intent: workflowResult.data.intent,
+          integrationRisk: INTEGRATION_RISK,
+          safety: apiBackedSafetyPayload(),
+        } as unknown as NonNullable<ActionResult['data']>,
+      };
+    }
+
+    const publishResult = await publishWorkflowToMarketplace({
+      apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+      workflowId,
+      author: getStringLiteralParameter(handlerParameters, 'author') ?? owner,
+      tags: getStringArrayParameter(handlerParameters, 'tags'),
+      pricing: getPricingParameter(handlerParameters),
+    });
+
+    if (!publishResult.ok) {
+      return createApiBlockedActionResult('CREATE_WORKFLOW publish', publishResult, {
+        executionMode: LIVE_RUN,
+        workflow: workflowResult.data.workflow,
+        intent: workflowResult.data.intent,
+      });
+    }
+
+    marketplaceListing = publishResult.data.listing;
+  }
+
+  return {
+    success: true,
+    text: marketplaceListing
+      ? 'Created workflow through app API and published it to marketplace.'
+      : 'Created workflow through app API.',
+    data: {
+      ok: true,
+      source: 'api',
+      executionMode: LIVE_RUN,
+      integrationRisk: INTEGRATION_RISK,
+      safety: apiBackedSafetyPayload(),
+      workflow: workflowResult.data.workflow,
+      intent: workflowResult.data.intent,
+      marketplaceListing,
+    } as unknown as NonNullable<ActionResult['data']>,
+  };
+}
+
 export const createWorkflowAction: LoomAction = {
   name: 'CREATE_WORKFLOW',
   description:
-    'Create a workflow candidate from natural language, using LOOM_ELIZAOS_EXECUTION_MODE to choose dry-run or live-run.',
+    'Create a workflow from natural language, using dry-run locally or live-run through the app API.',
   validate: validateDryRunAction,
   handler: async (
     _runtime,
@@ -505,7 +721,7 @@ export const createWorkflowAction: LoomAction = {
     const prompt = getPromptOption(options) ?? getMessageText(message);
 
     if (getConfiguredExecutionMode(handlerParameters) === LIVE_RUN) {
-      return createLiveWorkflowActionResult(prompt, handlerParameters);
+      return createApiWorkflowActionResult(prompt, handlerParameters);
     }
 
     return createActionResult(await createDryRunWorkflowCandidate({ text: prompt }));
@@ -514,48 +730,90 @@ export const createWorkflowAction: LoomAction = {
 
 export const browseMarketplaceAction: LoomAction = {
   name: 'BROWSE_MARKETPLACE',
-  description: 'List demo-safe workflow listings from the local loomlabs template registry.',
+  description:
+    'List marketplace entries from the local demo registry in dry-run or from the app API in live-run.',
   validate: validateDryRunAction,
-  handler: async () => ({
-    success: true,
-    text: 'Loaded dry-run marketplace entries from the local template registry.',
-    data: {
-      ok: true,
-      executionMode: DRY_RUN_ONLY,
-      integrationRisk: INTEGRATION_RISK,
-      safety: dryRunSafetyPayload(),
-      ...createAxlDiscoveryMetadata(),
-      items: templates.map((template) => {
-        const summary = summarizeTemplate(template);
-        const intent = inferDemoIntent(template.id, [summary]);
-        const unsupportedOperations = demoUnsupportedOperations([summary]);
-        const axlPublishDraft = createAxlPublishDraft({
-          templateId: summary.id,
-          templateName: summary.name,
-          protocol: summary.protocol,
-          category: summary.category,
-          chainId: summary.sepolia?.chainId ?? null,
-          network: summary.sepolia?.network ?? null,
-          parameters: intent.parameters,
-          trigger: summary.trigger,
-          actions: summary.actions,
-          runtimePlaceholderValues: summary.sepolia?.runtimePlaceholderValues ?? [],
-          contracts: summary.sepolia?.contracts ?? [],
-          unsupportedOperations,
-        });
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options?: HandlerOptions | Record<string, unknown>,
+  ) => {
+    const handlerParameters = getHandlerParameters(options);
 
-        return {
-          id: `demo-${template.id}`,
-          template: summary,
-          pricing: { type: 'free' },
-          source: 'local-demo-registry',
-          registryHints: axlPublishDraft.registryHints,
-          onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
-          axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
-        };
-      }),
-    },
-  }),
+    if (getConfiguredExecutionMode(handlerParameters) === LIVE_RUN) {
+      const result = await listMarketplaceFromApi({
+        apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+        query: {
+          tag: getStringLiteralParameter(handlerParameters, 'tag'),
+          author: getStringLiteralParameter(handlerParameters, 'author'),
+          protocol: getStringLiteralParameter(handlerParameters, 'protocol'),
+          sort: getStringLiteralParameter(handlerParameters, 'sort'),
+          limit: getNumberParameter(handlerParameters, 'limit'),
+        },
+      });
+
+      if (!result.ok) {
+        return createApiBlockedActionResult('BROWSE_MARKETPLACE', result);
+      }
+
+      return {
+        success: true,
+        text: 'Loaded marketplace entries from the app API.',
+        data: {
+          ok: true,
+          source: 'api',
+          executionMode: LIVE_RUN,
+          integrationRisk: INTEGRATION_RISK,
+          safety: apiBackedSafetyPayload(),
+          items: result.data.items,
+          total: result.data.total,
+        } as unknown as NonNullable<ActionResult['data']>,
+      };
+    }
+
+    return {
+      success: true,
+      text: 'Loaded dry-run marketplace entries from the local template registry.',
+      data: {
+        ok: true,
+        source: 'local-demo-registry',
+        executionMode: DRY_RUN_ONLY,
+        integrationRisk: INTEGRATION_RISK,
+        safety: dryRunSafetyPayload(),
+        ...createAxlDiscoveryMetadata(),
+        items: templates.map((template) => {
+          const summary = summarizeTemplate(template);
+          const intent = inferDemoIntent(template.id, [summary]);
+          const unsupportedOperations = demoUnsupportedOperations([summary]);
+          const axlPublishDraft = createAxlPublishDraft({
+            templateId: summary.id,
+            templateName: summary.name,
+            protocol: summary.protocol,
+            category: summary.category,
+            chainId: summary.sepolia?.chainId ?? null,
+            network: summary.sepolia?.network ?? null,
+            parameters: intent.parameters,
+            trigger: summary.trigger,
+            actions: summary.actions,
+            runtimePlaceholderValues: summary.sepolia?.runtimePlaceholderValues ?? [],
+            contracts: summary.sepolia?.contracts ?? [],
+            unsupportedOperations,
+          });
+
+          return {
+            id: `demo-${template.id}`,
+            template: summary,
+            pricing: { type: 'free' },
+            source: 'local-demo-registry',
+            registryHints: axlPublishDraft.registryHints,
+            onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
+            axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
+          };
+        }),
+      },
+    };
+  },
 };
 
 export const browseTemplatesAction: LoomAction = {
