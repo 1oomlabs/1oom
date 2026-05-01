@@ -152,32 +152,41 @@ runtime queries, direct URL (port 5432) for `prisma migrate`.
 - Frontend uses `wagmi` + `viem` for the write call; `walletClient.writeContract`.
 - Receipt parsing decodes the `ListingCreated` event for the registry id.
 
-### ElizaOS (plugin, dry-run only at runtime)
+### ElizaOS (plugin, dry-run by default)
 
-`plugins/elizaos` exposes five actions:
+`plugins/elizaos` exposes dry-run actions, opt-in app API backed actions, and
+AXL metadata/transport previews:
 
 | Action | Behaviour today |
 |--------|-----------------|
 | `BROWSE_TEMPLATES` | Reads the local template registry — works as advertised |
 | `DESCRIBE_TEMPLATE` | Reads one template — works as advertised |
-| `CREATE_WORKFLOW` | Builds a dry-run workflow candidate locally, no API/chain call |
-| `BROWSE_MARKETPLACE` | Returns dry-run listings synthesised from the local template registry, plus AXL envelope drafts |
+| `CREATE_WORKFLOW` | Builds a dry-run workflow candidate locally, or calls the app API only when live-run mode is explicitly configured |
+| `BROWSE_MARKETPLACE` | Returns dry-run listings synthesised from the local template registry, or calls the app API only when live-run mode is explicitly configured |
 | `CREATE_WORKFLOW_DEMO` | Same as `CREATE_WORKFLOW`, explicit demo namespace |
+| `CREATE_WORKFLOW_LIVE` | Explicit Sepolia live-run path guarded by env, confirmation, signer, and reader checks |
+| `CHECK_AXL_NODE` / `SEND_AXL_WORKFLOW_DRAFT` / `RECEIVE_AXL_MESSAGES` / `EXECUTE_RECEIVED_AXL_WORKFLOW` | Opt-in AXL node actions, separate from default dry-run actions |
 
 The plugin advertises `executionMode: DRY_RUN_ONLY` and a safety manifest
-naming the runtime resources it will not touch (signer, RPC, wallet, app API,
-KeeperHub). For each candidate it produces an AXL envelope draft
+naming the runtime resources default actions will not touch (signer, RPC,
+wallet, app API, KeeperHub). For each candidate it produces an AXL envelope draft
 (`axlEnvelopeDraft.payload.contentHash`, `route.sendEndpoint: '/send'`, etc.)
 plus on-chain `register` calldata, so an integrator that adds a signer +
 network access can flip the plugin to live without restructuring the action
 shape.
 
-### Gensyn AXL (additive, dry-run envelopes)
+### Gensyn AXL (additive, dry-run envelopes + opt-in node actions)
 
 Workflows ship with an `axlFlow` block (protocol metadata + node API map) and
 a canonical-JSON `contentHash`. The plugin does **not** open a connection to
 an AXL node today — `blockedBy: ['no-axl-node', 'no-peer-id', 'dry-run-only']`
 is set explicitly in the plugin response.
+
+The MCP/A2A dry-run projection keeps the existing API-step workflow model
+intact. MCP treats workflow API steps as tool metadata; A2A treats the full
+workflow as an agent/skill preview. The separate AXL actions can call
+`/topology`, `/send`, `/recv`, and guarded `LOOM_API_URL/api/workflows` handoff
+only when explicitly invoked and configured.
 
 ## Templates
 
