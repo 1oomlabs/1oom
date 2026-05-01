@@ -2,12 +2,16 @@ import { useParams } from '@tanstack/react-router';
 
 import {
   type ApiError,
+  type Execution,
   type Workflow,
+  type WorkflowStatus,
   useForkWorkflow,
   usePauseWorkflow,
   useResumeWorkflow,
   useRunWorkflow,
   useWorkflow,
+  useWorkflowExecutions,
+  useWorkflowStatus,
 } from '@/api';
 import type { BadgeProps } from '@/components/ui/badge';
 import { protocolFromTemplateId } from '@/lib/view-models';
@@ -23,6 +27,9 @@ const statusBadgeMap: Record<Workflow['status'], StatusBadge> = {
   draft: 'ghost',
 };
 
+const STATUS_POLL_MS = 5_000;
+const EXECUTIONS_POLL_MS = 10_000;
+
 export interface WorkflowDetailVM {
   id: string;
   isLoading: boolean;
@@ -36,6 +43,10 @@ export interface WorkflowDetailVM {
   isDeployed: boolean;
   isPaused: boolean;
   canRun: boolean;
+  liveStatus: WorkflowStatus | undefined;
+  liveStatusLoading: boolean;
+  executions: Execution[];
+  executionsLoading: boolean;
   mutations: {
     run: { trigger: () => void; isPending: boolean };
     pause: { trigger: () => void; isPending: boolean };
@@ -46,7 +57,24 @@ export interface WorkflowDetailVM {
 
 export function useWorkflowDetailVM(): WorkflowDetailVM {
   const { id } = useParams({ from: '/workflows/$id' });
-  const { data: workflow, isLoading, isError, error, refetch } = useWorkflow(id);
+  const {
+    data: workflow,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useWorkflow(id, { refetchInterval: STATUS_POLL_MS });
+
+  const canPollExternal = !!workflow?.keeperJobId;
+
+  const { data: liveStatus, isLoading: liveStatusLoading } = useWorkflowStatus(id, {
+    enabled: canPollExternal,
+    refetchInterval: STATUS_POLL_MS,
+  });
+
+  const { data: executions = [], isLoading: executionsLoading } = useWorkflowExecutions(id, {
+    refetchInterval: EXECUTIONS_POLL_MS,
+  });
 
   const runM = useRunWorkflow({
     onSuccess: ({ execution }) =>
@@ -88,6 +116,10 @@ export function useWorkflowDetailVM(): WorkflowDetailVM {
     isDeployed,
     isPaused,
     canRun,
+    liveStatus,
+    liveStatusLoading,
+    executions,
+    executionsLoading,
     mutations: {
       run: {
         trigger: () => workflow && runM.mutate(workflow.id),
