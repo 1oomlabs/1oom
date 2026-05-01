@@ -154,8 +154,8 @@ runtime queries, direct URL (port 5432) for `prisma migrate`.
 
 ### ElizaOS plugin — dual-mode (dry-run + opt-in live)
 
-`plugins/elizaos` exposes six actions, each with explicit dry-run and live
-behaviour:
+`plugins/elizaos` exposes dry-run actions, opt-in app API backed actions, and
+explicit Sepolia live execution:
 
 | Action | Dry-run (default) | Live (opt-in) |
 |--------|-------------------|---------------|
@@ -165,6 +165,15 @@ behaviour:
 | `CREATE_WORKFLOW` | Builds a dry-run workflow candidate locally | Calls `POST /api/workflows`, deploying through KeeperHub. With `LOOM_ELIZAOS_AUTO_PUBLISH=true`, the resulting workflow is auto-published to `/api/marketplace` |
 | `CREATE_WORKFLOW_DEMO` | Same as `CREATE_WORKFLOW` dry-run, explicit demo namespace | n/a |
 | `CREATE_WORKFLOW_LIVE` | Returns blocked status if any guard fails | Prepares and broadcasts Sepolia transactions for Aave / Uniswap / Lido using a host-injected signer/reader pair |
+| `CHECK_AXL_NODE` / `SEND_AXL_WORKFLOW_DRAFT` / `RECEIVE_AXL_MESSAGES` / `EXECUTE_RECEIVED_AXL_WORKFLOW` | Not part of default workflow actions | Opt-in AXL node actions, separate from default dry-run actions |
+
+The plugin advertises `executionMode: DRY_RUN_ONLY` and a safety manifest
+naming the runtime resources default actions will not touch (signer, RPC,
+wallet, app API, KeeperHub). For each candidate it produces an AXL envelope draft
+(`axlEnvelopeDraft.payload.contentHash`, `route.sendEndpoint: '/send'`, etc.)
+plus on-chain `register` calldata, so an integrator that adds a signer +
+network access can flip the plugin to live without restructuring the action
+shape.
 
 #### Mode selection gates
 
@@ -223,6 +232,12 @@ metadata + node API map), a canonical-JSON `contentHash`, and a `publish` /
 does **not** open a connection to an AXL node — `blockedBy: ['no-axl-node',
 'no-peer-id', 'dry-run-only']` is set explicitly. The Sepolia live
 execution we ship is direct `viem`, not AXL-routed messaging.
+
+The MCP/A2A dry-run projection keeps the existing API-step workflow model
+intact. MCP treats workflow API steps as tool metadata; A2A treats the full
+workflow as an agent/skill preview. The separate AXL actions can call
+`/topology`, `/send`, `/recv`, and guarded `LOOM_API_URL/api/workflows` handoff
+only when explicitly invoked and configured.
 
 ## Templates
 

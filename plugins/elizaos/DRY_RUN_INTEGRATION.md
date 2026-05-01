@@ -315,6 +315,7 @@ POST /a2a/{peer_id}
 
 ```ts
 data.axlFlow
+data.axlDryRun
 data.registryHints
 data.onchainPublishDraft
 data.axlEnvelopeDraft
@@ -323,15 +324,86 @@ data.axlEnvelopeDraft
 의미:
 
 - `axlFlow`: AXL transport와 dry-run 차단 사유
+- `axlDryRun`: 기존 workflow action을 API step으로 투영한 MCP/A2A request preview
 - `registryHints`: `MarketplaceRegistry.register(bytes32,string)`와 curator flow 힌트
 - `onchainPublishDraft`: canonical workflow JSON의 `keccak256` hash와 registry URI
 - `axlEnvelopeDraft`: AXL `/send` raw message로 보낼 수 있는 draft envelope
+
+### MCP / A2A request preview
+
+`axlDryRun`은 실제 AXL node를 호출하지 않고, 실제 배포 환경이라면
+`localhost:9002`로 보낼 요청을 미리 보여줍니다.
+
+```ts
+data.axlDryRun.axlModeNotice ===
+  '현재는 AXL dry-run mode이며 실제 배포에서는 localhost:9002의 AXL node를 호출한다.'
+```
+
+MCP preview는 workflow의 API step을 MCP tool처럼 취급합니다.
+
+```ts
+data.axlDryRun.protocol === 'MCP'
+data.axlDryRun.generatedAxlRequestPreview.method === 'POST'
+data.axlDryRun.generatedAxlRequestPreview.url ===
+  'http://127.0.0.1:9002/mcp/{peer_id}/{service}'
+data.axlDryRun.generatedAxlRequestPreview.body.method === 'tools/list'
+```
+
+MCP tool registry는 실제 MCP server 없이 `tools/list` 응답에 해당하는 metadata를
+제공합니다.
+
+```ts
+data.axlDryRun.mcpToolRegistry.tools.map((tool) => tool.name)
+// ['quote', 'riskCheck', 'simulate', 'buildUnsignedTx']
+
+data.axlDryRun.globalMcpTools.map((tool) => tool.name)
+// ['browse_marketplace', 'create_workflow']
+
+data.axlDryRun.globalMcpTools.find((tool) => tool.name === 'create_workflow')
+  .wouldCall === 'POST /api/workflows'
+```
+
+A2A preview는 workflow 전체를 agent/skill처럼 취급합니다.
+
+```ts
+data.axlDryRun.protocol === 'A2A'
+data.axlDryRun.generatedAxlRequestPreview.method === 'POST'
+data.axlDryRun.generatedAxlRequestPreview.url ===
+  'http://127.0.0.1:9002/a2a/{peer_id}'
+data.axlDryRun.generatedAxlRequestPreview.body.method === 'message/send'
+```
+
+A2A agent card는 실제 A2A server 없이 workflow 전체를 agent skill metadata로
+노출합니다.
+
+```ts
+data.axlDryRun.a2aAgentCard.protocol === 'A2A'
+data.axlDryRun.a2aAgentCard.skills[0].mappedWorkflowId === data.templateId
+data.axlDryRun.a2aAgentCard.skills[0].mappedApiStepIds.length === 4
+```
+
+공통 safety contract:
+
+```ts
+data.axlDryRun.safety.signing === false
+data.axlDryRun.safety.broadcast === false
+data.axlDryRun.safety.requiresUserApproval === true
+data.axlDryRun.safety.dryRunOnly === true
+```
 
 주의:
 
 - 실제 AXL node 실행, peer discovery, `/send` 호출은 하지 않습니다.
 - 실제 `MarketplaceRegistry` transaction broadcast는 하지 않습니다.
-- API/schema/contracts wiring은 후속 enhance 브랜치에서 다룹니다.
+
+안전 경계:
+
+- 기존 dry-run action은 계속 external fetch 없이 동작합니다.
+- AXL action은 명시적으로 호출될 때만 `/topology`, `/send`, `/recv`를 사용합니다.
+- `EXECUTE_RECEIVED_AXL_WORKFLOW`는 수신 envelope의 `contentHash`를 재계산해
+  검증한 뒤에만 `LOOM_API_URL/api/workflows`로 넘깁니다.
+- plugin은 private key, RPC URL, KeeperHub API key를 보관하거나 응답에 노출하지
+  않습니다.
 
 현재 검증된 범위:
 
