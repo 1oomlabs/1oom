@@ -31,6 +31,7 @@ export function listingToCard(listing: MarketplaceListing): WorkflowCardData {
           explorerUrl: explorerTxUrl(onchain.txHash, w.chainId),
         }
       : undefined,
+    axlAgent: listing.tags.includes('axl-agent'),
   };
 }
 

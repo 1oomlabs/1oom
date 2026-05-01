@@ -131,6 +131,27 @@ AXL_NODE_URL=http://127.0.0.1:9012 \
   pnpm receive
 ```
 
+### Going further: auto-publish to the marketplace
+
+Add `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` and the receiver will also call
+`POST /api/marketplace` with the new workflow id, the operator's EOA, and
+the tags `axl-agent`, `received-via-mesh`, plus the workflow's protocol
+(`aave` / `uniswap` / `lido`). The listing then shows up on
+`https://1ooms-web.vercel.app/marketplace` — judges can refresh the page
+and see workflows that arrived through the AXL mesh land in the public UI:
+
+```bash
+ENABLE_AXL_AGENT_EXECUTION=true \
+LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true \
+LOOM_API_URL=https://loomlabsapi-production.up.railway.app \
+LOOM_WORKFLOW_OWNER=0x...your_eoa... \
+AXL_NODE_URL=http://127.0.0.1:9012 \
+  pnpm receive
+```
+
+Filter the marketplace by tag (`/marketplace?tag=axl-agent`) to see only
+agent-discovered listings.
+
 ## Templates
 
 `PUBLISH_TEMPLATE_ID` accepts `lido-stake`, `aave-recurring-deposit`, or

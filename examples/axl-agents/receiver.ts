@@ -11,11 +11,16 @@ export {};
 //   LOOM_API_URL=https://loomlabsapi-production.up.railway.app
 //   LOOM_WORKFLOW_OWNER=0x<eoa>
 //   ENABLE_AXL_AGENT_EXECUTION=true
+//
+// Optional env (to also publish the deployed workflow to the marketplace,
+// tagged "axl-agent" so judges can see AXL-discovered listings in the UI):
+//   LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true
 
 const AXL_NODE_URL = process.env.AXL_NODE_URL ?? 'http://127.0.0.1:9012';
 const LOOM_API_URL = process.env.LOOM_API_URL?.replace(/\/$/, '');
 const LOOM_WORKFLOW_OWNER = process.env.LOOM_WORKFLOW_OWNER;
 const ENABLE_EXECUTION = process.env.ENABLE_AXL_AGENT_EXECUTION === 'true';
+const AUTO_PUBLISH = process.env.LOOM_AUTO_PUBLISH_TO_MARKETPLACE === 'true';
 const POLL_INTERVAL_MS = Number(process.env.AXL_POLL_INTERVAL_MS ?? 2000);
 
 type AxlEnvelope = {
@@ -112,7 +117,38 @@ async function executeReceivedWorkflow(envelope: AxlEnvelope): Promise<void> {
     return;
   }
   const json = (await res.json()) as { workflow?: { id?: string } };
-  console.log(`  -> deployed via Loom API: workflow.id=${json.workflow?.id ?? '<unknown>'}`);
+  const workflowId = json.workflow?.id;
+  console.log(`  -> deployed via Loom API: workflow.id=${workflowId ?? '<unknown>'}`);
+
+  if (AUTO_PUBLISH && workflowId && LOOM_API_URL && LOOM_WORKFLOW_OWNER) {
+    await publishToMarketplace(workflowId, envelope);
+  }
+}
+
+async function publishToMarketplace(workflowId: string, envelope: AxlEnvelope): Promise<void> {
+  if (!LOOM_API_URL || !LOOM_WORKFLOW_OWNER) {
+    return;
+  }
+
+  const res = await fetch(`${LOOM_API_URL}/api/marketplace`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      workflowId,
+      author: LOOM_WORKFLOW_OWNER,
+      tags: ['axl-agent', 'received-via-mesh', envelope.payload.workflow.protocol],
+      pricing: { type: 'free' },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error(`[loom-api] marketplace publish failed ${res.status}: ${body}`);
+    return;
+  }
+
+  const json = (await res.json()) as { listing?: { id?: string } };
+  console.log(`  -> published to marketplace: listing.id=${json.listing?.id ?? '<unknown>'}`);
 }
 
 function describeEnvelope(env: AxlEnvelope): string {
@@ -129,7 +165,7 @@ function describeEnvelope(env: AxlEnvelope): string {
 async function main(): Promise<void> {
   console.log(`[recv] polling ${AXL_NODE_URL}/recv every ${POLL_INTERVAL_MS}ms (Ctrl-C to stop)`);
   console.log(
-    `[recv] execution: ${ENABLE_EXECUTION ? 'enabled' : 'disabled'} | loom-api: ${LOOM_API_URL ?? '<unset>'}`,
+    `[recv] execution: ${ENABLE_EXECUTION ? 'enabled' : 'disabled'} | auto-publish: ${AUTO_PUBLISH ? 'on' : 'off'} | loom-api: ${LOOM_API_URL ?? '<unset>'}`,
   );
 
   while (true) {
