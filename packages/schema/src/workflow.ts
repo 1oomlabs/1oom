@@ -18,8 +18,25 @@ export const workflowSchema = z.object({
   createdAt: z.number().int(),
   status: z.enum(['draft', 'deployed', 'paused', 'completed', 'error']).default('draft'),
   keeperJobId: z.string().optional(),
+  runCount: z.number().int().nonnegative().default(0),
+  lastRunAt: z.number().int().optional(),
 });
 export type Workflow = z.infer<typeof workflowSchema>;
+
+export const executionSchema = z.object({
+  id: z.string(),
+  workflowId: z.string(),
+  executionId: z.string(),
+  status: z.string(),
+  createdAt: z.number().int(),
+});
+export type Execution = z.infer<typeof executionSchema>;
+
+export const workflowStatusSchema = z.object({
+  jobId: z.string(),
+  status: z.string(),
+});
+export type WorkflowStatus = z.infer<typeof workflowStatusSchema>;
 
 /**
  * Request payload when an agent/user submits natural language to create a workflow.

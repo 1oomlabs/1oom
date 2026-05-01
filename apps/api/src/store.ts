@@ -1,10 +1,13 @@
-import type { Workflow } from '@loomlabs/schema';
-import type { Workflow as DbWorkflow, Prisma } from '@prisma/client';
+import type { Execution, Workflow } from '@loomlabs/schema';
+import type { Execution as DbExecution, Workflow as DbWorkflow, Prisma } from '@prisma/client';
 
 import { prisma } from '@/db';
 
 // 신규 생성 입력 — id/createdAt/status는 자동 채움
-type CreateWorkflowInput = Omit<Workflow, 'id' | 'createdAt' | 'status'> & {
+type CreateWorkflowInput = Omit<
+  Workflow,
+  'id' | 'createdAt' | 'status' | 'runCount' | 'lastRunAt'
+> & {
   status?: Workflow['status'];
 };
 
@@ -23,6 +26,18 @@ function toWorkflow(row: DbWorkflow): Workflow {
     actions: row.actions as Workflow['actions'],
     status: row.status as Workflow['status'],
     keeperJobId: row.keeperJobId ?? undefined,
+    runCount: row.runCount,
+    lastRunAt: row.lastRunAt ? row.lastRunAt.getTime() : undefined,
+    createdAt: row.createdAt.getTime(),
+  };
+}
+
+function toExecution(row: DbExecution): Execution {
+  return {
+    id: row.id,
+    workflowId: row.workflowId,
+    executionId: row.executionId,
+    status: row.status,
     createdAt: row.createdAt.getTime(),
   };
 }
@@ -63,9 +78,18 @@ export const workflowStore = {
 
   // 부분 업데이트 — undefined 필드는 변경 안 함 (기존 in-memory 동작과 동일)
   async update(id: string, patch: Partial<Workflow>): Promise<Workflow | undefined> {
-    // id/createdAt은 변경 불가 필드 → _ prefix로 빼서 무시 (실수로라도 update 안 되게)
+    // id/createdAt/runCount/lastRunAt은 update로 못 건드림 — 전용 메소드(recordRun)로만 변경
     // JSON 필드는 따로 빼서 cast 필요, 나머지(string/number)는 ...rest로 그대로 전달 가능
-    const { id: _id, createdAt: _createdAt, parameters, trigger, actions, ...rest } = patch;
+    const {
+      id: _id,
+      createdAt: _createdAt,
+      runCount: _runCount,
+      lastRunAt: _lastRunAt,
+      parameters,
+      trigger,
+      actions,
+      ...rest
+    } = patch;
     try {
       const row = await prisma.workflow.update({
         where: { id },
@@ -92,5 +116,45 @@ export const workflowStore = {
     } catch {
       return false;
     }
+  },
+
+  // Run tracking — Execution insert + Workflow runCount/lastRunAt bump을 트랜잭션으로 묶음
+  // 이유: 실행 기록과 카운트가 항상 같이 움직이게 (race 방지)
+  async recordRun(
+    workflowId: string,
+    execution: { executionId: string; status: string },
+  ): Promise<{ workflow: Workflow; execution: Execution } | undefined> {
+    try {
+      const [updatedRow, executionRow] = await prisma.$transaction([
+        prisma.workflow.update({
+          where: { id: workflowId },
+          data: {
+            runCount: { increment: 1 },
+            lastRunAt: new Date(),
+          },
+        }),
+        prisma.execution.create({
+          data: {
+            workflowId,
+            executionId: execution.executionId,
+            status: execution.status,
+          },
+        }),
+      ]);
+      return { workflow: toWorkflow(updatedRow), execution: toExecution(executionRow) };
+    } catch {
+      return undefined;
+    }
+  },
+};
+
+export const executionStore = {
+  async listByWorkflow(workflowId: string, limit = 20): Promise<Execution[]> {
+    const rows = await prisma.execution.findMany({
+      where: { workflowId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return rows.map(toExecution);
   },
 };

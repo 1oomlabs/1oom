@@ -23,10 +23,27 @@ model Workflow {
   actions     Json
   status      String   @default("draft")
   keeperJobId String?
+  runCount    Int      @default(0)
+  lastRunAt   DateTime?
   createdAt   DateTime @default(now())
+
+  executions  Execution[]
 
   @@index([owner])
   @@map("workflows")
+}
+
+model Execution {
+  id           String   @id @default(uuid())
+  workflowId   String
+  executionId  String
+  status       String
+  createdAt    DateTime @default(now())
+
+  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId, createdAt])
+  @@map("executions")
 }
 
 model MarketplaceListing {
