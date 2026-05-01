@@ -224,20 +224,40 @@ Three live templates are wired:
 | `uniswap-dca` | (optional) `ERC20.approve` → `UniswapRouter.exactInputSingle` (slippage gated) → check `tokenOut.balanceOf` |
 | `lido-stake` | `MockLido.submit` (with native ETH value) → (optional) `MockStETH.approve` → `MockWstETH.wrap` → check `wstETH.balanceOf` |
 
-### Gensyn AXL — envelope shape only, no node communication
+### Gensyn AXL — three layers (drafts, client, live demo)
 
-`plugins/elizaos/src/axl-flow.ts` produces an AXL `axlFlow` block (protocol
-metadata + node API map), a canonical-JSON `contentHash`, and a `publish` /
-`discover` envelope draft alongside on-chain `register` calldata. The plugin
-does **not** open a connection to an AXL node — `blockedBy: ['no-axl-node',
-'no-peer-id', 'dry-run-only']` is set explicitly. The Sepolia live
-execution we ship is direct `viem`, not AXL-routed messaging.
+The AXL surface is built in three layers, from safe to live:
 
-The MCP/A2A dry-run projection keeps the existing API-step workflow model
-intact. MCP treats workflow API steps as tool metadata; A2A treats the full
-workflow as an agent/skill preview. The separate AXL actions can call
-`/topology`, `/send`, `/recv`, and guarded `LOOM_API_URL/api/workflows` handoff
-only when explicitly invoked and configured.
+1. **Envelope drafts (`plugins/elizaos/src/axl-flow.ts`).** Pure functions
+   that produce a `loomlabs.axl.v1` envelope: `axlFlow` protocol metadata,
+   a canonical-JSON `contentHash`, route hints (`/send` / `/recv` / peer
+   id), and on-chain `register` calldata. No network. Always available, no
+   configuration required.
+2. **HTTP client (`plugins/elizaos/src/axl-client.ts`).** A minimal
+   `AxlClient` that hits the AXL node's HTTP bridge directly: `getTopology`,
+   `sendEnvelope`, `receiveMessage`, and `executeReceivedWorkflow` (which
+   verifies the envelope's content hash before forwarding to the Loom API).
+   Configured by `AXL_NODE_URL`, `AXL_DESTINATION_PEER_ID`, `LOOM_API_URL`,
+   `LOOM_WORKFLOW_OWNER`, `ENABLE_AXL_AGENT_EXECUTION`.
+3. **Two-node demo (`examples/axl-agents`).** Standalone publisher and
+   receiver scripts that talk to two real `gensyn-ai/axl` binaries with
+   different identities and `api_port`s. Used to satisfy the Gensyn track
+   qualification — see `examples/axl-agents/README.md`.
+
+The MCP/A2A dry-run projection (`plugins/elizaos/src/axl-dry-run.ts`) sits
+on top of layer 1 and is rendered as `mcpToolRegistry` / `a2aAgentCard`
+objects in plugin responses. It maps the same workflow API steps to MCP
+tool listings and A2A skills, including the JSON-RPC bodies a real AXL
+node would expect on `/mcp/{peer_id}/{service}` and `/a2a/{peer_id}`.
+
+ElizaOS plugin actions wired to layer 2:
+
+| Action | Behaviour |
+|--------|-----------|
+| `CHECK_AXL_NODE` | Calls `GET /topology` on the configured node, returns the public key + connected peers. Useful as a precheck before send/recv. |
+| `SEND_AXL_WORKFLOW_DRAFT` | Builds an envelope from an inbound message and posts it to `/send` with `X-Destination-Peer-Id`. Returns `X-Sent-Bytes`. |
+| `RECEIVE_AXL_MESSAGES` | Polls `/recv` once. Returns null on 204, parsed envelope plus `from_peer_id` on 200. |
+| `EXECUTE_RECEIVED_AXL_WORKFLOW` | Receives, recomputes the content hash via `verifyAxlEnvelopeDraft`, and hands the workflow off to `POST /api/workflows`. Gated by `ENABLE_AXL_AGENT_EXECUTION=true`. |
 
 ## Templates
 
@@ -293,9 +313,12 @@ without hitting the chain.
   This is intentional: judging is reproducible without keys or RPC, while
   an integrator with a wallet can promote the same plugin to live without
   code changes.
-- **No AXL node communication.** The plugin emits AXL envelope drafts
-  with canonical content hashes but does not run an AXL node or call
-  `/send` / `/recv` (see "Not pursued" in `approach.md`).
+- **AXL is an opt-in side channel.** The default web flow stores listings
+  in Postgres and anchors them on Sepolia; AXL routing is only used when
+  the operator runs the [`examples/axl-agents`](../examples/axl-agents)
+  publisher/receiver pair (or invokes the plugin's AXL actions). This
+  keeps the system usable without an AXL node while still satisfying the
+  Gensyn track's "communication across separate AXL nodes" requirement.
 - **Curator approval not exposed.** Listings register as `Pending` on-chain
   and our DB flips to `confirmed` once the tx is mined; the curator's
   `approveListing` step is implemented in the contract but not surfaced in

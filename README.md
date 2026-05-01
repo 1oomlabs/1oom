@@ -3,10 +3,12 @@
 Natural language to DeFi workflow automation with an agent marketplace, anchored
 onchain via a Sepolia `MarketplaceRegistry`.
 
-Built for ETHGlobal. Primary submission is the **KeeperHub** track. The
-ElizaOS plugin and the Sepolia `MarketplaceRegistry` ship as part of the
-system but are not separate prize tracks; we considered Gensyn AXL but did
-not pursue eligibility (see [`docs/approach.md`](./docs/approach.md)).
+Built for ETHGlobal. Two-track submission: **KeeperHub** (workflow lifecycle
+depth) and **Gensyn — Best Application of AXL** (peer-to-peer agent comms
+through two real AXL nodes; see [`examples/axl-agents`](./examples/axl-agents)).
+The ElizaOS plugin and the Sepolia `MarketplaceRegistry` are part of the
+system but not separate prize tracks. See [`docs/approach.md`](./docs/approach.md)
+for the per-track narrative.
 
 For the submission narrative see [`docs/approach.md`](./docs/approach.md). For
 the full system breakdown see [`docs/architecture.md`](./docs/architecture.md).
