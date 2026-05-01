@@ -1,0 +1,16 @@
+# Railway Nixpacks config for the loomlabs monorepo (api deploy target).
+# Build runs from repo root so pnpm workspace dependencies resolve correctly.
+
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm-9_x", "openssl"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm --filter @loomlabs/api build"]
+
+[start]
+cmd = "pnpm --filter @loomlabs/api start"
