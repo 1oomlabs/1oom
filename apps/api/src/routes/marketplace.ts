@@ -48,12 +48,14 @@ marketplaceRouter.get('/', async (c) => {
   const tag = c.req.query('tag');
   const author = c.req.query('author');
   const protocol = c.req.query('protocol');
+  const workflowId = c.req.query('workflowId');
   const sort = c.req.query('sort') ?? 'newest';
   const limit = Math.min(Number(c.req.query('limit') ?? 20), 100);
 
   let items = await marketplaceStore.list();
   if (tag) items = items.filter((l) => l.tags.includes(tag));
   if (author) items = items.filter((l) => l.author === author);
+  if (workflowId) items = items.filter((l) => l.workflow.id === workflowId);
   if (protocol) {
     items = items.filter((l) => getTemplateById(l.workflow.templateId)?.protocol === protocol);
   }
