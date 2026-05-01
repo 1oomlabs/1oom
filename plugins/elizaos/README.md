@@ -10,7 +10,8 @@
 - `BROWSE_TEMPLATES`: 로컬 템플릿과 Sepolia metadata 조회
 - `DESCRIBE_TEMPLATE`: 특정 템플릿 상세 조회
 - `CREATE_WORKFLOW_DEMO`: 자연어 입력을 dry-run workflow 후보로 변환
-- `CREATE_WORKFLOW`: 환경변수에 따라 dry-run 또는 live-run 선택
+- `CREATE_WORKFLOW`: dry-run에서는 후보 생성, live-run에서는 app API workflow 생성
+- `BROWSE_MARKETPLACE`: 기본 로컬 목록 또는 app API marketplace 목록 조회
 - `CREATE_WORKFLOW_LIVE`: 명시적 Sepolia live-run 실행 경로
 
 ## 기본 dry-run 설정
@@ -25,9 +26,40 @@ LOOM_CONFIRM_SEPOLIA_LIVE_EXECUTION=false
 
 이 모드에서는 signer, RPC, wallet, private key가 필요하지 않고 transaction을 전송하지 않습니다.
 
+## live-run API 연동 설정
+
+ElizaOS agent가 실제 Loomlabs API를 보게 하려면 live-run을 켭니다.
+
+```bash
+LOOM_ELIZAOS_EXECUTION_MODE=live-run
+LOOM_API_BASE_URL=http://localhost:8787
+LOOM_ELIZAOS_AUTO_PUBLISH=false
+```
+
+동작:
+
+- `BROWSE_MARKETPLACE` → `GET /api/marketplace`
+- `CREATE_WORKFLOW` → `POST /api/workflows`
+- `LOOM_ELIZAOS_AUTO_PUBLISH=true`이면 생성 직후 `POST /api/marketplace`
+
+`CREATE_WORKFLOW` live-run은 handler options에 아래 값을 받아야 합니다.
+
+```ts
+{
+  parameters: {
+    owner: '0x...',
+    chainId: 11155111,
+    tags: ['agent-created'],
+    pricing: { type: 'free' }
+  }
+}
+```
+
+주의: 이 단계에서 LLM, KeeperHub, 저장소 처리는 `apps/api`가 담당합니다.
+
 ## live-run 설정
 
-`CREATE_WORKFLOW`를 실제 Sepolia 실행 경로로 전환하려면 아래 값을 설정합니다.
+`CREATE_WORKFLOW_LIVE`로 실제 Sepolia transaction까지 실행하려면 아래 값을 추가로 설정합니다.
 
 ```bash
 LOOM_ELIZAOS_EXECUTION_MODE=live-run
