@@ -53,6 +53,11 @@ review surfaces. None of them runs at product runtime.
   routing, AXL envelope draft helpers, and the `live-execution.ts`
   Sepolia-only plan/preflight/error-mapping module that prepares Aave,
   Uniswap, and Lido transactions through host-injected adapters.
+- The `examples/axl-agents` two-node demo: a self-contained publisher
+  and receiver pair that drive the AXL HTTP bridge (`/send`, `/recv`,
+  `/topology`) directly with `fetch`, plus the auto-publish path that
+  surfaces AXL-discovered workflows in the marketplace UI with a
+  "via AXL agent" badge.
 - Schema design for `executions`, the `runCount`/`lastRunAt` denormalised
   columns, and the `recordRun` Prisma transaction.
 - Iterative prompt engineering for `extractWorkflowIntent` — including

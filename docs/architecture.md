@@ -241,8 +241,14 @@ The AXL surface is built in three layers, from safe to live:
    `LOOM_WORKFLOW_OWNER`, `ENABLE_AXL_AGENT_EXECUTION`.
 3. **Two-node demo (`examples/axl-agents`).** Standalone publisher and
    receiver scripts that talk to two real `gensyn-ai/axl` binaries with
-   different identities and `api_port`s. Used to satisfy the Gensyn track
-   qualification — see `examples/axl-agents/README.md`.
+   different identities and `api_port`s. With
+   `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` the receiver, after deploying
+   a verified envelope through `POST /api/workflows`, also calls
+   `POST /api/marketplace` so the AXL-discovered workflow surfaces in the
+   public UI. Listings created this way carry the `axl-agent` and
+   `received-via-mesh` tags, and the marketplace card renders a
+   "via AXL agent" badge based on those tags. Used to satisfy the Gensyn
+   track qualification — see `examples/axl-agents/README.md`.
 
 The MCP/A2A dry-run projection (`plugins/elizaos/src/axl-dry-run.ts`) sits
 on top of layer 1 and is rendered as `mcpToolRegistry` / `a2aAgentCard`

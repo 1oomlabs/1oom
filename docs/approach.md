@@ -71,10 +71,15 @@ typed, KeeperHub-executed, onchain-anchored DeFi workflow.
   binaries run side by side; one agent posts a workflow envelope to its
   local AXL node via `POST /send`, the AXL mesh routes the bytes to the
   other node, and a second agent polls `GET /recv`, verifies the SHA-256
-  content hash, and (optionally) hands the workflow off to the Loom API
-  for deployment. The plugin's `AxlClient` drives the same path from
-  inside ElizaOS. End-to-end demo lives in
-  [`examples/axl-agents`](../examples/axl-agents).
+  content hash, and (with `ENABLE_AXL_AGENT_EXECUTION=true`) hands the
+  workflow off to the Loom API for deployment through KeeperHub. With
+  `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` the receiver also publishes
+  the deployed workflow with the tags `axl-agent` and `received-via-mesh`,
+  so AXL-discovered listings show up on the production marketplace next
+  to web-published ones — the marketplace card carries a vermilion
+  "via AXL agent" badge to make the source visible. The plugin's
+  `AxlClient` drives the same path from inside ElizaOS. End-to-end demo
+  lives in [`examples/axl-agents`](../examples/axl-agents).
 
 ## Track alignment
 
@@ -85,7 +90,7 @@ two-node demo in [`examples/axl-agents`](../examples/axl-agents).
 | Track | Where this hits the brief |
 |-------|---------------------------|
 | **KeeperHub** | `packages/keeperhub-client` is a typed HTTP wrapper around the full lifecycle (deploy, execute, status). The API records every execution in a dedicated `executions` table and surfaces live job status to the UI on a 5s tick; pause/resume are wired with explicit "store-only" semantics where KeeperHub has no native primitive. Empty-`nodes`/`edges` deploy quirk handled (see client comments). The frontend detail page shows runCount, lastRunAt, recent run history, and live KeeperHub job status side by side. |
-| **Gensyn (AXL)** | Two `gensyn-ai/axl` binaries run side by side; the publisher posts a `loomlabs.axl.v1` workflow envelope with a SHA-256 content hash and `X-Destination-Peer-Id`, the receiver polls `/recv`, decodes the envelope, and (with `ENABLE_AXL_AGENT_EXECUTION=true`) forwards it to the Loom API to deploy through KeeperHub. Both nodes have separate ed25519 identities, separate IPv6 addresses, and separate `api_port` values — communication is genuinely across nodes, not in-process. The plugin's [`AxlClient`](../plugins/elizaos/src/axl-client.ts) drives the same flow from inside ElizaOS via four semi-live actions. |
+| **Gensyn (AXL)** | Two `gensyn-ai/axl` binaries run side by side; the publisher posts a `loomlabs.axl.v1` workflow envelope with a SHA-256 content hash and `X-Destination-Peer-Id`, the receiver polls `/recv`, decodes the envelope, and (with `ENABLE_AXL_AGENT_EXECUTION=true`) forwards it to the Loom API to deploy through KeeperHub. With `LOOM_AUTO_PUBLISH_TO_MARKETPLACE=true` the receiver also creates a marketplace listing tagged `axl-agent` — the production marketplace card surfaces this with a "via AXL agent" badge. Both nodes have separate ed25519 identities, separate IPv6 addresses, and separate `api_port` values — communication is genuinely across nodes, not in-process. The plugin's [`AxlClient`](../plugins/elizaos/src/axl-client.ts) drives the same flow from inside ElizaOS via four semi-live actions. |
 
 ### Beyond the track — agent surface and onchain anchoring
 
