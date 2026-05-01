@@ -1,6 +1,7 @@
 import type { MarketplaceListing, Workflow } from '@loomlabs/schema';
 
 import type { WorkflowCardData } from '@/components/ui/workflow-card';
+import { explorerTxUrl } from '@/lib/constants';
 
 export function protocolFromTemplateId(templateId: string): WorkflowCardData['protocol'] {
   const head = templateId.split('-')[0];
@@ -10,6 +11,7 @@ export function protocolFromTemplateId(templateId: string): WorkflowCardData['pr
 
 export function listingToCard(listing: MarketplaceListing): WorkflowCardData {
   const w = listing.workflow;
+  const onchain = listing.stats.onchain;
   return {
     id: w.id,
     name: w.name,
@@ -22,6 +24,13 @@ export function listingToCard(listing: MarketplaceListing): WorkflowCardData {
         : { amount: listing.pricing.amount, token: listing.pricing.token },
     installs: listing.stats.installs,
     runs: listing.stats.runs,
+    verified: onchain
+      ? {
+          status: onchain.status,
+          txHash: onchain.txHash,
+          explorerUrl: explorerTxUrl(onchain.txHash, w.chainId),
+        }
+      : undefined,
   };
 }
 

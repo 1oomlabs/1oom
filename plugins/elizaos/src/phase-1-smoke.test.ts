@@ -198,7 +198,7 @@ export const phase1ElizaOsSmokeTests: SmokeTestCase[] = [
         'Lido demo response must include the confirmed MockLido address',
       );
       assert(
-        combinedResponse.includes('0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08'),
+        combinedResponse.includes('0xc4936b9baA6E09a5Aa39dCE7001d24aAE84E97fF'),
         'Lido demo response must include the confirmed MockWstETH address',
       );
       assert(

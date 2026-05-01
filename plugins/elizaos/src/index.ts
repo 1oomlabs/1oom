@@ -6,24 +6,55 @@ import {
   templates,
 } from '@loomlabs/templates';
 
-import { createAxlDiscoveryMetadata, createAxlPublishDraft } from './axl-flow';
+import {
+  API_BASE_URL_ENV_VAR,
+  AUTO_PUBLISH_ENV_VAR,
+  type ApiFailure,
+  type PricingInput,
+  createWorkflowFromApi,
+  listMarketplaceFromApi,
+  publishWorkflowToMarketplace,
+} from './api-client';
+import { AxlClient } from './axl-client';
+import { AXL_DRY_RUN_NOTICE, createAxlDryRunProjection } from './axl-dry-run';
+import type { AxlConnectionType, AxlDryRunProjection } from './axl-dry-run';
+import {
+  canonicalWorkflowJson,
+  createAxlDiscoveryMetadata,
+  createAxlPublishDraft,
+} from './axl-flow';
 import type { AxlPublishDraft } from './axl-flow';
+import {
+  CREATE_WORKFLOW_LIVE_ACTION_NAME,
+  LIVE_EXECUTION_FEATURE_FLAG,
+  LIVE_RUN,
+  executeLiveExecutionRequest,
+} from './live-execution';
+
+export {
+  API_BASE_URL_ENV_VAR,
+  AUTO_PUBLISH_ENV_VAR,
+} from './api-client';
 
 /**
  * ElizaOS plugin surface.
  *
  * Exposes demo-safe actions to agents:
- *   1. CREATE_WORKFLOW - turn a natural-language prompt into a dry-run workflow candidate.
- *   2. BROWSE_MARKETPLACE - discover marketplace entries without network calls.
+ *   1. CREATE_WORKFLOW - turn a natural-language prompt into dry-run, API-backed, or live workflow handling.
+ *   2. BROWSE_MARKETPLACE - discover local marketplace entries or opt-in app API listings.
  *   3. BROWSE_TEMPLATES - list local templates and Sepolia metadata status.
  *   4. DESCRIBE_TEMPLATE - describe one local template and its Sepolia demo metadata.
  *   5. CREATE_WORKFLOW_DEMO - create a dry-run demo workflow candidate only.
+ *   6. CHECK/SEND/RECEIVE/EXECUTE AXL actions - opt-in semi-live AXL transport.
+ *   7. CREATE_WORKFLOW_LIVE - explicit live-run request guarded by env, confirmation, signer, and reader checks.
  *
- * Types follow @elizaos/core 2.0.0-alpha.77 while keeping every action dry-run only.
+ * Types follow @elizaos/core 2.0.0-alpha.77 while keeping dry-run as the safe default.
  * Runtime compatibility remains INTEGRATION_RISK until verified inside an actual ElizaOS agent.
  */
 
 export const INTEGRATION_RISK = 'INTEGRATION_RISK' as const;
+export const EXECUTION_MODE_ENV_VAR = 'LOOM_ELIZAOS_EXECUTION_MODE' as const;
+export const LIVE_CONFIRMATION_ENV_VAR = 'LOOM_CONFIRM_SEPOLIA_LIVE_EXECUTION' as const;
 
 export type LoomAction = Action;
 
@@ -34,6 +65,11 @@ export type LoomPlugin = Plugin & {
     forbiddenRuntimeRequirements: readonly string[];
     blockedExternalCalls: readonly string[];
     noProductionExecutionTerms: readonly string[];
+  };
+  axl: {
+    executionMode: 'semi-live-opt-in';
+    actions: readonly string[];
+    requiredEnv: readonly string[];
   };
   actions: LoomAction[];
 };
@@ -60,11 +96,19 @@ type DemoWorkflowCandidate = {
   intent: DemoIntent;
   workflowDraft: DryRunWorkflowDraft;
   axlFlow: AxlPublishDraft['axlFlow'];
+  axlDryRun: AxlDryRunProjection;
   registryHints: AxlPublishDraft['registryHints'];
   onchainPublishDraft: AxlPublishDraft['onchainPublishDraft'];
   axlEnvelopeDraft: AxlPublishDraft['axlEnvelopeDraft'];
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
+};
+
+type AxlDryRunOptions = {
+  connectionType?: AxlConnectionType;
+  peerId?: string;
+  serviceName?: string;
+  agentName?: string;
 };
 
 type DemoIntent = {
@@ -250,6 +294,19 @@ function dryRunSafetyPayload() {
   };
 }
 
+function apiBackedSafetyPayload() {
+  return {
+    ...dryRunSafetyPayload(),
+    callsAppApi: true,
+    requiresApiKey: false,
+    executionBlockedBy: [
+      'no-direct-transaction-broadcast',
+      'no-direct-wallet-access',
+      'app-api-handles-workflow-lifecycle',
+    ],
+  };
+}
+
 function createDryRunWorkflowDraft(
   template: ReturnType<typeof summarizeTemplate>,
   intent: DemoIntent,
@@ -273,6 +330,7 @@ function createDryRunWorkflowDraft(
 
 async function createDryRunWorkflowCandidate(message: {
   text: string;
+  axl?: AxlDryRunOptions;
 }): Promise<DemoWorkflowCandidate> {
   const templateCandidates = findTemplateCandidates(message.text);
   const intent = inferDemoIntent(message.text, templateCandidates);
@@ -300,6 +358,25 @@ async function createDryRunWorkflowCandidate(message: {
     contracts: workflowTemplate.sepolia?.contracts ?? [],
     unsupportedOperations,
   });
+  const axlDryRun = createAxlDryRunProjection({
+    workflow: {
+      id: workflowTemplate.id,
+      name: workflowTemplate.name,
+      protocol: workflowTemplate.protocol,
+      category: workflowTemplate.category,
+      description: workflowTemplate.description,
+      chainId: workflowTemplate.sepolia?.chainId ?? null,
+      network: workflowTemplate.sepolia?.network ?? null,
+      parameters: intent.parameters,
+      trigger: workflowTemplate.trigger,
+      actions: workflowTemplate.actions,
+    },
+    userRequest: message.text,
+    connectionType: message.axl?.connectionType,
+    peerId: message.axl?.peerId,
+    serviceName: message.axl?.serviceName,
+    agentName: message.axl?.agentName,
+  });
 
   return {
     ok: true,
@@ -321,6 +398,7 @@ async function createDryRunWorkflowCandidate(message: {
     intent,
     workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
     axlFlow: axlPublishDraft.axlFlow,
+    axlDryRun,
     registryHints: axlPublishDraft.registryHints,
     onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
     axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
@@ -365,72 +443,495 @@ function createTemplateNotFoundResult(): ActionResult {
 }
 
 const validateDryRunAction: LoomAction['validate'] = async () => true;
+const validateAxlAction: LoomAction['validate'] = async () => true;
+
+function getHandlerParameters(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
+    return {};
+  }
+
+  return (options.parameters as Record<string, unknown> | null) ?? {};
+}
 
 function getPromptOption(
   options: HandlerOptions | Record<string, unknown> | undefined,
 ): string | undefined {
-  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
-    return undefined;
-  }
-
-  const parameters = options.parameters as Record<string, unknown> | null;
-  const prompt = parameters?.prompt;
+  const prompt = getHandlerParameters(options).prompt;
 
   return typeof prompt === 'string' ? prompt : undefined;
 }
 
+function getAxlDryRunOptions(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): AxlDryRunOptions {
+  const parameters = getHandlerParameters(options);
+  const connectionType = parameters?.connectionType;
+
+  return {
+    connectionType:
+      connectionType === 'MCP' || connectionType === 'A2A' ? connectionType : undefined,
+    peerId: getOptionalStringParameter(parameters, 'peerId'),
+    serviceName: getOptionalStringParameter(parameters, 'serviceName'),
+    agentName: getOptionalStringParameter(parameters, 'agentName'),
+  };
+}
+
+function getOptionalStringParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function getRecordParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = parameters[key];
+
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function getNumberParameter(parameters: Record<string, unknown>, key: string): number | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'number' ? value : undefined;
+}
+
+function getBooleanParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function getStringLiteralParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getStringParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): `0x${string}` | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'string' && value.startsWith('0x') ? (value as `0x${string}`) : undefined;
+}
+
+type ProcessLike = {
+  env?: Record<string, string | undefined>;
+};
+
+function getEnvironmentValue(key: string): string | undefined {
+  return (globalThis as typeof globalThis & { process?: ProcessLike }).process?.env?.[key];
+}
+
+function isTruthyConfigValue(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return ['1', 'true', 'yes', 'on', 'live', 'live-run'].includes(value.trim().toLowerCase());
+}
+
+function shouldAutoPublish(parameters: Record<string, unknown>): boolean {
+  return (
+    getBooleanParameter(parameters, 'autoPublish') === true ||
+    isTruthyConfigValue(getEnvironmentValue(AUTO_PUBLISH_ENV_VAR))
+  );
+}
+
+function getConfiguredExecutionMode(
+  parameters: Record<string, unknown>,
+): typeof DRY_RUN_ONLY | typeof LIVE_RUN {
+  const requestedMode = parameters.executionMode;
+
+  if (requestedMode === LIVE_RUN) {
+    return LIVE_RUN;
+  }
+
+  if (requestedMode === DRY_RUN_ONLY || requestedMode === 'dry-run') {
+    return DRY_RUN_ONLY;
+  }
+
+  return getEnvironmentValue(EXECUTION_MODE_ENV_VAR)?.trim().toLowerCase() === LIVE_RUN
+    ? LIVE_RUN
+    : DRY_RUN_ONLY;
+}
+
+function getConfiguredFeatureFlags(parameters: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...(isTruthyConfigValue(getEnvironmentValue(LIVE_EXECUTION_FEATURE_FLAG))
+      ? { [LIVE_EXECUTION_FEATURE_FLAG]: true }
+      : {}),
+    ...(getRecordParameter(parameters, 'featureFlags') ?? {}),
+  };
+}
+
+function getConfiguredLiveConfirmation(parameters: Record<string, unknown>): boolean {
+  return (
+    parameters.confirmLiveExecution === true ||
+    isTruthyConfigValue(getEnvironmentValue(LIVE_CONFIRMATION_ENV_VAR))
+  );
+}
+
+function toActionData(value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toActionData);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        toActionData(entry),
+      ]),
+    );
+  }
+
+  return value;
+}
+
+function createAxlUnavailableResult(actionName: string, error: unknown): ActionResult {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return createSemiLiveActionResult(`${actionName} is unavailable: ${message}`, {
+    ok: false,
+    executionMode: 'semi-live-axl',
+    integrationRisk: INTEGRATION_RISK,
+    status: 'unavailable',
+    error: message,
+  });
+}
+
+function createSemiLiveActionResult(text: string, data: Record<string, unknown>): ActionResult {
+  return {
+    success: true,
+    text,
+    data: data as NonNullable<ActionResult['data']>,
+  };
+}
+
+async function createAxlWorkflowEnvelope(message: Memory): Promise<AxlPublishDraft> {
+  const data = await createDryRunWorkflowCandidate({ text: getMessageText(message) });
+
+  return {
+    axlFlow: data.axlFlow,
+    registryHints: data.registryHints,
+    onchainPublishDraft: data.onchainPublishDraft,
+    axlEnvelopeDraft: data.axlEnvelopeDraft,
+    canonicalWorkflowJson: canonicalWorkflowJson(data.axlEnvelopeDraft.payload.workflow),
+  };
+}
+
+function createApiBlockedActionResult(
+  actionName: string,
+  failure: ApiFailure,
+  extraData: Record<string, unknown> = {},
+): ActionResult {
+  return {
+    success: false,
+    text: `${actionName} API call is blocked: ${failure.code}.`,
+    error: failure.code,
+    data: {
+      ok: false,
+      source: 'api',
+      integrationRisk: INTEGRATION_RISK,
+      safety: apiBackedSafetyPayload(),
+      failure,
+      ...extraData,
+    },
+  };
+}
+
+function getStringArrayParameter(parameters: Record<string, unknown>, key: string): string[] {
+  const value = parameters[key];
+
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function getPricingParameter(parameters: Record<string, unknown>): PricingInput | undefined {
+  const value = parameters.pricing;
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const pricing = value as Record<string, unknown>;
+
+  if (pricing.type === 'free') {
+    return { type: 'free' };
+  }
+
+  if (
+    pricing.type === 'x402' &&
+    typeof pricing.amount === 'string' &&
+    typeof pricing.token === 'string'
+  ) {
+    return {
+      type: 'x402',
+      amount: pricing.amount,
+      token: pricing.token,
+    };
+  }
+
+  return undefined;
+}
+
+function getWorkflowId(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const id = (value as Record<string, unknown>).id;
+
+  return typeof id === 'string' ? id : undefined;
+}
+
+async function createApiWorkflowActionResult(
+  prompt: string,
+  handlerParameters: Record<string, unknown>,
+): Promise<ActionResult> {
+  const owner = getStringLiteralParameter(handlerParameters, 'owner');
+  const chainId = getNumberParameter(handlerParameters, 'chainId') ?? 11155111;
+
+  if (!owner) {
+    return {
+      success: false,
+      text: 'CREATE_WORKFLOW live-run requires an owner address.',
+      error: 'OWNER_REQUIRED',
+      data: {
+        ok: false,
+        source: 'api',
+        executionMode: LIVE_RUN,
+        integrationRisk: INTEGRATION_RISK,
+        safety: apiBackedSafetyPayload(),
+      },
+    };
+  }
+
+  const workflowResult = await createWorkflowFromApi({
+    apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+    prompt,
+    owner,
+    chainId,
+  });
+
+  if (!workflowResult.ok) {
+    return createApiBlockedActionResult('CREATE_WORKFLOW', workflowResult, {
+      executionMode: LIVE_RUN,
+    });
+  }
+
+  let marketplaceListing: unknown;
+
+  if (shouldAutoPublish(handlerParameters)) {
+    const workflowId = getWorkflowId(workflowResult.data.workflow);
+
+    if (!workflowId) {
+      return {
+        success: false,
+        text: 'CREATE_WORKFLOW live-run cannot publish because workflow.id is missing.',
+        error: 'WORKFLOW_ID_REQUIRED_FOR_PUBLISH',
+        data: {
+          ok: false,
+          source: 'api',
+          executionMode: LIVE_RUN,
+          workflow: workflowResult.data.workflow,
+          intent: workflowResult.data.intent,
+          integrationRisk: INTEGRATION_RISK,
+          safety: apiBackedSafetyPayload(),
+        } as unknown as NonNullable<ActionResult['data']>,
+      };
+    }
+
+    const publishResult = await publishWorkflowToMarketplace({
+      apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+      workflowId,
+      author: getStringLiteralParameter(handlerParameters, 'author') ?? owner,
+      tags: getStringArrayParameter(handlerParameters, 'tags'),
+      pricing: getPricingParameter(handlerParameters),
+    });
+
+    if (!publishResult.ok) {
+      return createApiBlockedActionResult('CREATE_WORKFLOW publish', publishResult, {
+        executionMode: LIVE_RUN,
+        workflow: workflowResult.data.workflow,
+        intent: workflowResult.data.intent,
+      });
+    }
+
+    marketplaceListing = publishResult.data.listing;
+  }
+
+  return {
+    success: true,
+    text: marketplaceListing
+      ? 'Created workflow through app API and published it to marketplace.'
+      : 'Created workflow through app API.',
+    data: {
+      ok: true,
+      source: 'api',
+      executionMode: LIVE_RUN,
+      integrationRisk: INTEGRATION_RISK,
+      safety: apiBackedSafetyPayload(),
+      workflow: workflowResult.data.workflow,
+      intent: workflowResult.data.intent,
+      marketplaceListing,
+    } as unknown as NonNullable<ActionResult['data']>,
+  };
+}
+
 export const createWorkflowAction: LoomAction = {
   name: 'CREATE_WORKFLOW',
-  description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
+  description:
+    'Create a workflow from natural language, using dry-run locally or live-run through the app API.',
   validate: validateDryRunAction,
-  handler: async (_runtime, message) =>
-    createActionResult(await createDryRunWorkflowCandidate({ text: getMessageText(message) })),
+  handler: async (
+    _runtime,
+    message,
+    _state,
+    options?: HandlerOptions | Record<string, unknown>,
+  ) => {
+    const handlerParameters = getHandlerParameters(options);
+    const prompt = getPromptOption(options) ?? getMessageText(message);
+
+    if (getConfiguredExecutionMode(handlerParameters) === LIVE_RUN) {
+      return createApiWorkflowActionResult(prompt, handlerParameters);
+    }
+
+    return createActionResult(
+      await createDryRunWorkflowCandidate({ text: prompt, axl: getAxlDryRunOptions(options) }),
+    );
+  },
 };
 
 export const browseMarketplaceAction: LoomAction = {
   name: 'BROWSE_MARKETPLACE',
-  description: 'List demo-safe workflow listings from the local loomlabs template registry.',
+  description:
+    'List marketplace entries from the local demo registry in dry-run or from the app API in live-run.',
   validate: validateDryRunAction,
-  handler: async () => ({
-    success: true,
-    text: 'Loaded dry-run marketplace entries from the local template registry.',
-    data: {
-      ok: true,
-      executionMode: DRY_RUN_ONLY,
-      integrationRisk: INTEGRATION_RISK,
-      safety: dryRunSafetyPayload(),
-      ...createAxlDiscoveryMetadata(),
-      items: templates.map((template) => {
-        const summary = summarizeTemplate(template);
-        const intent = inferDemoIntent(template.id, [summary]);
-        const unsupportedOperations = demoUnsupportedOperations([summary]);
-        const axlPublishDraft = createAxlPublishDraft({
-          templateId: summary.id,
-          templateName: summary.name,
-          protocol: summary.protocol,
-          category: summary.category,
-          chainId: summary.sepolia?.chainId ?? null,
-          network: summary.sepolia?.network ?? null,
-          parameters: intent.parameters,
-          trigger: summary.trigger,
-          actions: summary.actions,
-          runtimePlaceholderValues: summary.sepolia?.runtimePlaceholderValues ?? [],
-          contracts: summary.sepolia?.contracts ?? [],
-          unsupportedOperations,
-        });
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options?: HandlerOptions | Record<string, unknown>,
+  ) => {
+    const handlerParameters = getHandlerParameters(options);
 
-        return {
-          id: `demo-${template.id}`,
-          template: summary,
-          pricing: { type: 'free' },
-          source: 'local-demo-registry',
-          registryHints: axlPublishDraft.registryHints,
-          onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
-          axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
-        };
-      }),
-    },
-  }),
+    if (getConfiguredExecutionMode(handlerParameters) === LIVE_RUN) {
+      const result = await listMarketplaceFromApi({
+        apiBaseUrl: getStringLiteralParameter(handlerParameters, 'apiBaseUrl'),
+        query: {
+          tag: getStringLiteralParameter(handlerParameters, 'tag'),
+          author: getStringLiteralParameter(handlerParameters, 'author'),
+          protocol: getStringLiteralParameter(handlerParameters, 'protocol'),
+          sort: getStringLiteralParameter(handlerParameters, 'sort'),
+          limit: getNumberParameter(handlerParameters, 'limit'),
+        },
+      });
+
+      if (!result.ok) {
+        return createApiBlockedActionResult('BROWSE_MARKETPLACE', result);
+      }
+
+      return {
+        success: true,
+        text: 'Loaded marketplace entries from the app API.',
+        data: {
+          ok: true,
+          source: 'api',
+          executionMode: LIVE_RUN,
+          integrationRisk: INTEGRATION_RISK,
+          safety: apiBackedSafetyPayload(),
+          items: result.data.items,
+          total: result.data.total,
+        } as unknown as NonNullable<ActionResult['data']>,
+      };
+    }
+
+    return {
+      success: true,
+      text: 'Loaded dry-run marketplace entries from the local template registry.',
+      data: {
+        ok: true,
+        source: 'local-demo-registry',
+        executionMode: DRY_RUN_ONLY,
+        integrationRisk: INTEGRATION_RISK,
+        safety: dryRunSafetyPayload(),
+        axlModeNotice: AXL_DRY_RUN_NOTICE,
+        ...createAxlDiscoveryMetadata(),
+        items: templates.map((template) => {
+          const summary = summarizeTemplate(template);
+          const intent = inferDemoIntent(template.id, [summary]);
+          const unsupportedOperations = demoUnsupportedOperations([summary]);
+          const axlPublishDraft = createAxlPublishDraft({
+            templateId: summary.id,
+            templateName: summary.name,
+            protocol: summary.protocol,
+            category: summary.category,
+            chainId: summary.sepolia?.chainId ?? null,
+            network: summary.sepolia?.network ?? null,
+            parameters: intent.parameters,
+            trigger: summary.trigger,
+            actions: summary.actions,
+            runtimePlaceholderValues: summary.sepolia?.runtimePlaceholderValues ?? [],
+            contracts: summary.sepolia?.contracts ?? [],
+            unsupportedOperations,
+          });
+          const axlDryRun = createAxlDryRunProjection({
+            workflow: {
+              id: summary.id,
+              name: summary.name,
+              protocol: summary.protocol,
+              category: summary.category,
+              description: summary.description,
+              chainId: summary.sepolia?.chainId ?? null,
+              network: summary.sepolia?.network ?? null,
+              parameters: intent.parameters,
+              trigger: summary.trigger,
+              actions: summary.actions,
+            },
+            userRequest: `Browse ${summary.name} as an AXL-compatible dry-run workflow`,
+          });
+
+          return {
+            id: `demo-${template.id}`,
+            template: summary,
+            pricing: { type: 'free' },
+            source: 'local-demo-registry',
+            registryHints: axlPublishDraft.registryHints,
+            onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
+            axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
+            axlDryRun,
+          };
+        }),
+      },
+    };
+  },
 };
 
 export const browseTemplatesAction: LoomAction = {
@@ -486,7 +987,184 @@ export const createWorkflowDemoAction: LoomAction = {
     createActionResult(
       await createDryRunWorkflowCandidate({
         text: getPromptOption(options) ?? getMessageText(message),
+        axl: getAxlDryRunOptions(options),
       }),
+    ),
+};
+
+export const checkAxlNodeAction: LoomAction = {
+  name: 'CHECK_AXL_NODE',
+  description: 'Check the configured Gensyn AXL node topology.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const topology = await new AxlClient().getTopology();
+
+      return createSemiLiveActionResult('Loaded AXL node topology.', {
+        ok: true,
+        executionMode: 'semi-live-axl',
+        integrationRisk: INTEGRATION_RISK,
+        topology,
+      });
+    } catch (error) {
+      return createAxlUnavailableResult('CHECK_AXL_NODE', error);
+    }
+  },
+};
+
+export const sendAxlWorkflowDraftAction: LoomAction = {
+  name: 'SEND_AXL_WORKFLOW_DRAFT',
+  description: 'Send a workflow draft envelope through the configured Gensyn AXL node.',
+  validate: validateAxlAction,
+  handler: async (_runtime, message) => {
+    try {
+      const draft = await createAxlWorkflowEnvelope(message);
+      const sendResult = await new AxlClient().sendEnvelope(draft.axlEnvelopeDraft);
+
+      return createSemiLiveActionResult('Sent workflow draft envelope through AXL.', {
+        ok: true,
+        executionMode: 'semi-live-axl',
+        integrationRisk: INTEGRATION_RISK,
+        sendResult,
+        onchainPublishDraft: draft.onchainPublishDraft,
+        axlEnvelopeDraft: draft.axlEnvelopeDraft,
+      });
+    } catch (error) {
+      return createAxlUnavailableResult('SEND_AXL_WORKFLOW_DRAFT', error);
+    }
+  },
+};
+
+export const receiveAxlMessagesAction: LoomAction = {
+  name: 'RECEIVE_AXL_MESSAGES',
+  description: 'Receive one pending Gensyn AXL message from the configured node.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const message = await new AxlClient().receiveMessage();
+
+      return createSemiLiveActionResult(
+        message ? 'Received one AXL message.' : 'No AXL messages are pending.',
+        {
+          ok: true,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: message ? 'received' : 'empty',
+          message,
+        },
+      );
+    } catch (error) {
+      return createAxlUnavailableResult('RECEIVE_AXL_MESSAGES', error);
+    }
+  },
+};
+
+export const executeReceivedAxlWorkflowAction: LoomAction = {
+  name: 'EXECUTE_RECEIVED_AXL_WORKFLOW',
+  description: 'Receive a verified AXL workflow envelope and hand it to the Loom API pipeline.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const client = new AxlClient();
+      const message = await client.receiveMessage();
+
+      if (!message) {
+        return createSemiLiveActionResult('No AXL workflow envelope is pending for execution.', {
+          ok: false,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: 'empty',
+        });
+      }
+
+      const execution = await client.executeReceivedWorkflow(message);
+
+      return createSemiLiveActionResult(
+        'Submitted received AXL workflow to the Loom API execution pipeline.',
+        {
+          ok: true,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: 'submitted',
+          fromPeerId: message.fromPeerId,
+          execution,
+        },
+      );
+    } catch (error) {
+      return createAxlUnavailableResult('EXECUTE_RECEIVED_AXL_WORKFLOW', error);
+    }
+  },
+};
+
+async function createLiveWorkflowActionResult(
+  prompt: string,
+  handlerParameters: Record<string, unknown>,
+): Promise<ActionResult> {
+  const templateCandidates = findTemplateCandidates(prompt);
+  const selectedTemplate = templateCandidates[0];
+  const templateId = selectedTemplate?.id ?? templates[0]?.id ?? 'unknown-template';
+  const intent = inferDemoIntent(prompt, templateCandidates);
+  const liveParameters = {
+    ...intent.parameters,
+    ...(getRecordParameter(handlerParameters, 'parameters') ?? {}),
+  };
+  const liveResult = await executeLiveExecutionRequest({
+    templateId,
+    chainId:
+      getNumberParameter(handlerParameters, 'chainId') ??
+      selectedTemplate?.sepolia?.chainId ??
+      11155111,
+    executionMode: LIVE_RUN,
+    confirmLiveExecution: getConfiguredLiveConfirmation(handlerParameters),
+    featureFlags: getConfiguredFeatureFlags(handlerParameters),
+    signer: handlerParameters.signer as never,
+    reader: handlerParameters.reader as never,
+    account: getStringParameter(handlerParameters, 'account'),
+    parameters: liveParameters,
+    metadata: getSepoliaTemplateMetadata(templateId),
+  });
+
+  if (!liveResult.ok) {
+    return {
+      success: false,
+      text: `Live execution is blocked for ${templateId}: ${liveResult.code}. No transaction was prepared or broadcast.`,
+      error: liveResult.code,
+      data: {
+        ok: false,
+        executionMode: DRY_RUN_ONLY,
+        requestedExecutionMode: LIVE_RUN,
+        integrationRisk: INTEGRATION_RISK,
+        safety: {
+          ...dryRunSafetyPayload(),
+          canPrepareTransactions: liveResult.safety.canPrepareTransactions,
+          canBroadcastTransactions: liveResult.safety.canBroadcastTransactions,
+        },
+        liveResult,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    text: `Live execution completed for ${templateId} with ${liveResult.transactionHashes.length} transaction(s).`,
+    data: {
+      ok: true,
+      executionMode: LIVE_RUN,
+      requestedExecutionMode: LIVE_RUN,
+      integrationRisk: INTEGRATION_RISK,
+      liveResult: toActionData(liveResult),
+    } as unknown as NonNullable<ActionResult['data']>,
+  };
+}
+
+export const createWorkflowLiveAction: LoomAction = {
+  name: CREATE_WORKFLOW_LIVE_ACTION_NAME,
+  description: 'Execute a Sepolia live-run through host-injected signer and reader adapters.',
+  validate: validateDryRunAction,
+  handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
+    createLiveWorkflowActionResult(
+      getPromptOption(options) ?? getMessageText(message),
+      getHandlerParameters(options),
     ),
 };
 
@@ -500,12 +1178,33 @@ export const loomPlugin: LoomPlugin = {
     blockedExternalCalls: ['keeperhub-deploy', 'llm-api-call', 'apps-api-call'],
     noProductionExecutionTerms: [],
   },
+  axl: {
+    executionMode: 'semi-live-opt-in',
+    actions: [
+      'CHECK_AXL_NODE',
+      'SEND_AXL_WORKFLOW_DRAFT',
+      'RECEIVE_AXL_MESSAGES',
+      'EXECUTE_RECEIVED_AXL_WORKFLOW',
+    ],
+    requiredEnv: [
+      'AXL_NODE_URL',
+      'AXL_DESTINATION_PEER_ID',
+      'LOOM_API_URL',
+      'LOOM_WORKFLOW_OWNER',
+      'ENABLE_AXL_AGENT_EXECUTION',
+    ],
+  },
   actions: [
     createWorkflowAction,
     browseMarketplaceAction,
     browseTemplatesAction,
     describeTemplateAction,
     createWorkflowDemoAction,
+    checkAxlNodeAction,
+    sendAxlWorkflowDraftAction,
+    receiveAxlMessagesAction,
+    executeReceivedAxlWorkflowAction,
+    createWorkflowLiveAction,
   ],
 };
 

@@ -31,6 +31,7 @@ export type AxlFlowMetadata = {
 
 export type RegistryHints = {
   contract: 'MarketplaceRegistry';
+  sepoliaAddress: typeof SEPOLIA_MARKETPLACE_REGISTRY_ADDRESS;
   registerFunction: 'register(bytes32,string)';
   curationFlow: 'register -> pending -> curator approveListing -> discoverable';
   contentHashAlgorithm: 'keccak256(canonical workflow JSON)';
@@ -74,7 +75,7 @@ export type AxlPublishDraft = {
   canonicalWorkflowJson: string;
 };
 
-type CanonicalWorkflowPayload = {
+export type CanonicalWorkflowPayload = {
   templateId: string;
   templateName: string;
   protocol: string;
@@ -88,6 +89,9 @@ type CanonicalWorkflowPayload = {
   contracts: readonly unknown[];
   unsupportedOperations: readonly string[];
 };
+
+export const SEPOLIA_MARKETPLACE_REGISTRY_ADDRESS =
+  '0x42Fb9D61dDed6491874225e00F5d9D69612D09CB' as const;
 
 export function createAxlPublishDraft(input: AxlWorkflowDraftInput): AxlPublishDraft {
   const workflow: CanonicalWorkflowPayload = {
@@ -161,6 +165,18 @@ export function createAxlDiscoveryMetadata(): Pick<AxlPublishDraft, 'axlFlow' | 
   };
 }
 
+export function canonicalWorkflowJson(workflow: CanonicalWorkflowPayload): string {
+  return stableStringify(workflow);
+}
+
+export function hashCanonicalWorkflow(workflow: CanonicalWorkflowPayload): `0x${string}` {
+  return keccak256(stringToBytes(canonicalWorkflowJson(workflow)));
+}
+
+export function verifyAxlEnvelopeDraft(envelope: AxlEnvelopeDraft): boolean {
+  return envelope.payload.contentHash === hashCanonicalWorkflow(envelope.payload.workflow);
+}
+
 function createAxlFlowMetadata(): AxlFlowMetadata {
   return {
     protocol: 'gensyn-axl',
@@ -180,6 +196,7 @@ function createAxlFlowMetadata(): AxlFlowMetadata {
 function createRegistryHints(): RegistryHints {
   return {
     contract: 'MarketplaceRegistry',
+    sepoliaAddress: SEPOLIA_MARKETPLACE_REGISTRY_ADDRESS,
     registerFunction: 'register(bytes32,string)',
     curationFlow: 'register -> pending -> curator approveListing -> discoverable',
     contentHashAlgorithm: 'keccak256(canonical workflow JSON)',
