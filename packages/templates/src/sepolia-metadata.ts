@@ -310,13 +310,13 @@ export const sepoliaTemplateMetadata = {
       {
         contract: 'AaveAToken',
         address: protocolAddress(
-          '0x29598b72eb5CeBd806C5dCD549490FdA35B13cD8',
-          'AaveV3SepoliaAssets.DAI_A_TOKEN',
+          '0x3FfAf50D4F4E96eB78f2407c090b72e86eCaed24',
+          'AaveV3SepoliaAssets.LINK_A_TOKEN',
         ),
         requiredMethods: ['balanceOf'],
         abi: confirmedAbi(
           erc20AbiFragments,
-          'aDAI balanceOf uses the confirmed ERC20 ABI fragment.',
+          'aLINK balanceOf uses the confirmed ERC20 ABI fragment.',
         ),
       },
     ],
@@ -332,18 +332,18 @@ export const sepoliaTemplateMetadata = {
     demoParameters: [
       {
         name: 'token',
-        label: 'DAI',
-        value: '0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357',
+        label: 'LINK',
+        value: '0xf8Fb3713D459D7C1018BD0A49D19b4C44290EBE5',
         confirmation: HUMAN_CONFIRMED,
       },
-      { name: 'tokenDecimals', label: 'DAI decimals', value: 18, confirmation: HUMAN_CONFIRMED },
+      { name: 'tokenDecimals', label: 'LINK decimals', value: 18, confirmation: HUMAN_CONFIRMED },
     ],
     verificationTargets: [
       {
         name: 'aToken',
-        value: '0x29598b72eb5CeBd806C5dCD549490FdA35B13cD8',
+        value: '0x3FfAf50D4F4E96eB78f2407c090b72e86eCaed24',
         confirmation: HUMAN_CONFIRMED,
-        note: 'Use aDAI balanceOf for post-supply verification in non-dry-run environments.',
+        note: 'Use aLINK balanceOf for post-supply verification in non-dry-run environments.',
       },
     ],
     unresolvedHumanConfirmations: [],
@@ -475,7 +475,7 @@ export const sepoliaTemplateMetadata = {
       {
         contract: 'MockWstETH',
         address: mockAddress(
-          '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+          '0xc4936b9baA6E09a5Aa39dCE7001d24aAE84E97fF',
           'Human-provided Sepolia MockWstETH deployment',
           'MockWstETH',
         ),
@@ -490,7 +490,7 @@ export const sepoliaTemplateMetadata = {
     runtimePlaceholderValues: [
       {
         placeholder: '$MOCK_WSTETH',
-        value: '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+        value: '0xc4936b9baA6E09a5Aa39dCE7001d24aAE84E97fF',
         confirmation: HUMAN_CONFIRMED,
         source: 'Human-provided Sepolia MockWstETH deployment',
       },

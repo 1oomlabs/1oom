@@ -41,6 +41,7 @@ const expectedActionNames = [
   'BROWSE_TEMPLATES',
   'DESCRIBE_TEMPLATE',
   'CREATE_WORKFLOW_DEMO',
+  'CREATE_WORKFLOW_LIVE',
 ] as const;
 
 function assert(condition: unknown, message: string): asserts condition {

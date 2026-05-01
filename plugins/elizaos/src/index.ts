@@ -8,22 +8,31 @@ import {
 
 import { createAxlDiscoveryMetadata, createAxlPublishDraft } from './axl-flow';
 import type { AxlPublishDraft } from './axl-flow';
+import {
+  CREATE_WORKFLOW_LIVE_ACTION_NAME,
+  LIVE_EXECUTION_FEATURE_FLAG,
+  LIVE_RUN,
+  executeLiveExecutionRequest,
+} from './live-execution';
 
 /**
  * ElizaOS plugin surface.
  *
  * Exposes demo-safe actions to agents:
- *   1. CREATE_WORKFLOW - turn a natural-language prompt into a dry-run workflow candidate.
+ *   1. CREATE_WORKFLOW - turn a natural-language prompt into dry-run or env-selected live workflow handling.
  *   2. BROWSE_MARKETPLACE - discover marketplace entries without network calls.
  *   3. BROWSE_TEMPLATES - list local templates and Sepolia metadata status.
  *   4. DESCRIBE_TEMPLATE - describe one local template and its Sepolia demo metadata.
  *   5. CREATE_WORKFLOW_DEMO - create a dry-run demo workflow candidate only.
+ *   6. CREATE_WORKFLOW_LIVE - explicit live-run request guarded by env, confirmation, signer, and reader checks.
  *
- * Types follow @elizaos/core 2.0.0-alpha.77 while keeping every action dry-run only.
+ * Types follow @elizaos/core 2.0.0-alpha.77 while keeping dry-run as the safe default.
  * Runtime compatibility remains INTEGRATION_RISK until verified inside an actual ElizaOS agent.
  */
 
 export const INTEGRATION_RISK = 'INTEGRATION_RISK' as const;
+export const EXECUTION_MODE_ENV_VAR = 'LOOM_ELIZAOS_EXECUTION_MODE' as const;
+export const LIVE_CONFIRMATION_ENV_VAR = 'LOOM_CONFIRM_SEPOLIA_LIVE_EXECUTION' as const;
 
 export type LoomAction = Action;
 
@@ -366,25 +375,141 @@ function createTemplateNotFoundResult(): ActionResult {
 
 const validateDryRunAction: LoomAction['validate'] = async () => true;
 
+function getHandlerParameters(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
+    return {};
+  }
+
+  return (options.parameters as Record<string, unknown> | null) ?? {};
+}
+
 function getPromptOption(
   options: HandlerOptions | Record<string, unknown> | undefined,
 ): string | undefined {
-  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
-    return undefined;
-  }
-
-  const parameters = options.parameters as Record<string, unknown> | null;
-  const prompt = parameters?.prompt;
+  const prompt = getHandlerParameters(options).prompt;
 
   return typeof prompt === 'string' ? prompt : undefined;
 }
 
+function getRecordParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = parameters[key];
+
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function getNumberParameter(parameters: Record<string, unknown>, key: string): number | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'number' ? value : undefined;
+}
+
+function getStringParameter(
+  parameters: Record<string, unknown>,
+  key: string,
+): `0x${string}` | undefined {
+  const value = parameters[key];
+
+  return typeof value === 'string' && value.startsWith('0x') ? (value as `0x${string}`) : undefined;
+}
+
+type ProcessLike = {
+  env?: Record<string, string | undefined>;
+};
+
+function getEnvironmentValue(key: string): string | undefined {
+  return (globalThis as typeof globalThis & { process?: ProcessLike }).process?.env?.[key];
+}
+
+function isTruthyConfigValue(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return ['1', 'true', 'yes', 'on', 'live', 'live-run'].includes(value.trim().toLowerCase());
+}
+
+function getConfiguredExecutionMode(
+  parameters: Record<string, unknown>,
+): typeof DRY_RUN_ONLY | typeof LIVE_RUN {
+  const requestedMode = parameters.executionMode;
+
+  if (requestedMode === LIVE_RUN || requestedMode === DRY_RUN_ONLY) {
+    return requestedMode;
+  }
+
+  return getEnvironmentValue(EXECUTION_MODE_ENV_VAR)?.trim().toLowerCase() === LIVE_RUN
+    ? LIVE_RUN
+    : DRY_RUN_ONLY;
+}
+
+function getConfiguredFeatureFlags(parameters: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...(isTruthyConfigValue(getEnvironmentValue(LIVE_EXECUTION_FEATURE_FLAG))
+      ? { [LIVE_EXECUTION_FEATURE_FLAG]: true }
+      : {}),
+    ...(getRecordParameter(parameters, 'featureFlags') ?? {}),
+  };
+}
+
+function getConfiguredLiveConfirmation(parameters: Record<string, unknown>): boolean {
+  return (
+    parameters.confirmLiveExecution === true ||
+    isTruthyConfigValue(getEnvironmentValue(LIVE_CONFIRMATION_ENV_VAR))
+  );
+}
+
+function toActionData(value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toActionData);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        toActionData(entry),
+      ]),
+    );
+  }
+
+  return value;
+}
+
 export const createWorkflowAction: LoomAction = {
   name: 'CREATE_WORKFLOW',
-  description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
+  description:
+    'Create a workflow candidate from natural language, using LOOM_ELIZAOS_EXECUTION_MODE to choose dry-run or live-run.',
   validate: validateDryRunAction,
-  handler: async (_runtime, message) =>
-    createActionResult(await createDryRunWorkflowCandidate({ text: getMessageText(message) })),
+  handler: async (
+    _runtime,
+    message,
+    _state,
+    options?: HandlerOptions | Record<string, unknown>,
+  ) => {
+    const handlerParameters = getHandlerParameters(options);
+    const prompt = getPromptOption(options) ?? getMessageText(message);
+
+    if (getConfiguredExecutionMode(handlerParameters) === LIVE_RUN) {
+      return createLiveWorkflowActionResult(prompt, handlerParameters);
+    }
+
+    return createActionResult(await createDryRunWorkflowCandidate({ text: prompt }));
+  },
 };
 
 export const browseMarketplaceAction: LoomAction = {
@@ -490,6 +615,78 @@ export const createWorkflowDemoAction: LoomAction = {
     ),
 };
 
+async function createLiveWorkflowActionResult(
+  prompt: string,
+  handlerParameters: Record<string, unknown>,
+): Promise<ActionResult> {
+  const templateCandidates = findTemplateCandidates(prompt);
+  const selectedTemplate = templateCandidates[0];
+  const templateId = selectedTemplate?.id ?? templates[0]?.id ?? 'unknown-template';
+  const intent = inferDemoIntent(prompt, templateCandidates);
+  const liveParameters = {
+    ...intent.parameters,
+    ...(getRecordParameter(handlerParameters, 'parameters') ?? {}),
+  };
+  const liveResult = await executeLiveExecutionRequest({
+    templateId,
+    chainId:
+      getNumberParameter(handlerParameters, 'chainId') ??
+      selectedTemplate?.sepolia?.chainId ??
+      11155111,
+    executionMode: LIVE_RUN,
+    confirmLiveExecution: getConfiguredLiveConfirmation(handlerParameters),
+    featureFlags: getConfiguredFeatureFlags(handlerParameters),
+    signer: handlerParameters.signer as never,
+    reader: handlerParameters.reader as never,
+    account: getStringParameter(handlerParameters, 'account'),
+    parameters: liveParameters,
+    metadata: getSepoliaTemplateMetadata(templateId),
+  });
+
+  if (!liveResult.ok) {
+    return {
+      success: false,
+      text: `Live execution is blocked for ${templateId}: ${liveResult.code}. No transaction was prepared or broadcast.`,
+      error: liveResult.code,
+      data: {
+        ok: false,
+        executionMode: DRY_RUN_ONLY,
+        requestedExecutionMode: LIVE_RUN,
+        integrationRisk: INTEGRATION_RISK,
+        safety: {
+          ...dryRunSafetyPayload(),
+          canPrepareTransactions: liveResult.safety.canPrepareTransactions,
+          canBroadcastTransactions: liveResult.safety.canBroadcastTransactions,
+        },
+        liveResult,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    text: `Live execution completed for ${templateId} with ${liveResult.transactionHashes.length} transaction(s).`,
+    data: {
+      ok: true,
+      executionMode: LIVE_RUN,
+      requestedExecutionMode: LIVE_RUN,
+      integrationRisk: INTEGRATION_RISK,
+      liveResult: toActionData(liveResult),
+    } as unknown as NonNullable<ActionResult['data']>,
+  };
+}
+
+export const createWorkflowLiveAction: LoomAction = {
+  name: CREATE_WORKFLOW_LIVE_ACTION_NAME,
+  description: 'Execute a Sepolia live-run through host-injected signer and reader adapters.',
+  validate: validateDryRunAction,
+  handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
+    createLiveWorkflowActionResult(
+      getPromptOption(options) ?? getMessageText(message),
+      getHandlerParameters(options),
+    ),
+};
+
 export const loomPlugin: LoomPlugin = {
   name: 'loomlabs',
   description: 'Natural-language DeFi workflow creation and marketplace, via KeeperHub.',
@@ -506,6 +703,7 @@ export const loomPlugin: LoomPlugin = {
     browseTemplatesAction,
     describeTemplateAction,
     createWorkflowDemoAction,
+    createWorkflowLiveAction,
   ],
 };
 
