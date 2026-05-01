@@ -1,6 +1,13 @@
+import { type UseQueryOptions, type UseQueryResult, useQuery } from '@tanstack/react-query';
 import type { UseMutationResult } from '@tanstack/react-query';
 
-import { type CreateWorkflowRequest, type Workflow, workflowSchema } from '@loomlabs/schema';
+import {
+  type CreateWorkflowRequest,
+  type Execution,
+  type Workflow,
+  type WorkflowStatus,
+  workflowSchema,
+} from '@loomlabs/schema';
 
 import { type ApiClient, apiClient } from '../client';
 import type { ApiError } from '../errors';
@@ -12,7 +19,7 @@ import {
 } from '../hooks';
 import { type ListParams, Resource } from '../resource';
 
-export type { Workflow, CreateWorkflowRequest };
+export type { Workflow, CreateWorkflowRequest, Execution, WorkflowStatus };
 
 export interface WorkflowListParams extends ListParams {
   status?: Workflow['status'];
@@ -41,6 +48,20 @@ export class WorkflowsResource extends Resource<Workflow, WorkflowListParams> {
     return this.client.post<{ workflow: Workflow; execution: ExecuteResult }>(
       `${this.path}/${encodeURIComponent(id)}/run`,
     );
+  }
+
+  async getStatus(id: string): Promise<WorkflowStatus> {
+    const res = await this.client.get<{ status: WorkflowStatus }>(
+      `${this.path}/${encodeURIComponent(id)}/status`,
+    );
+    return res.status;
+  }
+
+  async listExecutions(id: string): Promise<Execution[]> {
+    const res = await this.client.get<{ executions: Execution[] }>(
+      `${this.path}/${encodeURIComponent(id)}/executions`,
+    );
+    return res.executions;
   }
 
   async pause(id: string): Promise<Workflow> {
@@ -96,7 +117,12 @@ export function useRunWorkflow(
 ): UseMutationResult<{ workflow: Workflow; execution: ExecuteResult }, ApiError, string> {
   return useResourceMutation({
     mutationFn: (id) => workflowsResource.run(id),
-    invalidate: (_data, id) => [workflowKeys.detail(id), workflowKeys.all()],
+    invalidate: (_data, id) => [
+      workflowKeys.detail(id),
+      workflowKeys.action('executions', id),
+      workflowKeys.action('status', id),
+      workflowKeys.all(),
+    ],
     options,
   });
 }
@@ -134,4 +160,40 @@ export function useForkWorkflow(
 export function workflowsHooksFor(client: ApiClient): ResourceHooks<Workflow, WorkflowListParams> {
   const r = new WorkflowsResource(client);
   return makeResourceHooks<Workflow, WorkflowListParams>(r);
+}
+
+type ReadOnlyQueryOpts<T> = Omit<UseQueryOptions<T, ApiError>, 'queryKey' | 'queryFn'>;
+
+export function useWorkflowStatus(
+  id: string | undefined,
+  options?: ReadOnlyQueryOpts<WorkflowStatus>,
+): UseQueryResult<WorkflowStatus, ApiError> {
+  return useQuery<WorkflowStatus, ApiError>({
+    ...options,
+    queryKey: workflowKeys.action('status', id ?? ''),
+    queryFn: () => {
+      if (!id) {
+        throw new Error('useWorkflowStatus queryFn invoked without id');
+      }
+      return workflowsResource.getStatus(id);
+    },
+    enabled: Boolean(id) && options?.enabled !== false,
+  });
+}
+
+export function useWorkflowExecutions(
+  id: string | undefined,
+  options?: ReadOnlyQueryOpts<Execution[]>,
+): UseQueryResult<Execution[], ApiError> {
+  return useQuery<Execution[], ApiError>({
+    ...options,
+    queryKey: workflowKeys.action('executions', id ?? ''),
+    queryFn: () => {
+      if (!id) {
+        throw new Error('useWorkflowExecutions queryFn invoked without id');
+      }
+      return workflowsResource.listExecutions(id);
+    },
+    enabled: Boolean(id) && options?.enabled !== false,
+  });
 }

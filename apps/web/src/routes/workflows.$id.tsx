@@ -150,15 +150,66 @@ function WorkflowDetailPage() {
               ))}
             </ul>
           </div>
+
+          <div>
+            <Eyebrow tone="muted">Recent runs</Eyebrow>
+            {vm.executionsLoading && vm.executions.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-border bg-card px-5 py-6 text-sm text-muted-foreground">
+                Loading run history…
+              </div>
+            ) : vm.executions.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-border bg-card px-5 py-6 text-sm text-muted-foreground">
+                No runs yet. Trigger one with “Run now”.
+              </div>
+            ) : (
+              <ul className="mt-4 flex flex-col gap-px overflow-hidden rounded-lg border border-border bg-border">
+                {vm.executions.map((execution) => (
+                  <li
+                    key={execution.id}
+                    className="flex items-center justify-between bg-card px-5 py-3"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-sm">
+                        {execution.executionId.slice(0, 12)}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular">
+                        {new Date(execution.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <Badge variant="outline">{execution.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
 
         <aside className="flex flex-col gap-6">
           <StatTile label="Status" value={workflow.status} />
           {workflow.keeperJobId ? (
-            <StatTile label="Keeper job" value={workflow.keeperJobId.slice(0, 8)} hint="active" />
+            <StatTile
+              label="Keeper job"
+              value={workflow.keeperJobId.slice(0, 8)}
+              hint={
+                vm.liveStatusLoading
+                  ? 'fetching…'
+                  : vm.liveStatus
+                    ? `live: ${vm.liveStatus.status}`
+                    : 'active'
+              }
+            />
           ) : (
             <StatTile label="Keeper job" value="—" hint="not deployed" />
           )}
+          <StatTile
+            label="Runs"
+            value={String(workflow.runCount)}
+            hint={
+              workflow.lastRunAt
+                ? `last ${new Date(workflow.lastRunAt).toLocaleString()}`
+                : 'never run'
+            }
+          />
 
           <Separator />
 

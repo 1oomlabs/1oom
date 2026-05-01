@@ -6,7 +6,7 @@ import { createWorkflowRequestSchema } from '@loomlabs/schema';
 import { getKeeperHubClient } from '@/keeperhub';
 import { log } from '@/log';
 import { compileWorkflow } from '@/services/compile';
-import { workflowStore } from '@/store';
+import { executionStore, workflowStore } from '@/store';
 import { zValidator } from '@/validate';
 
 export const workflowsRouter = new Hono();
@@ -62,7 +62,7 @@ workflowsRouter.get('/:id', async (c) => {
   return c.json({ workflow });
 });
 
-// "Run now" — KeeperHub에 즉시 실행 트리거
+// "Run now" — KeeperHub에 즉시 실행 트리거 + Execution 레코드 작성 + runCount/lastRunAt bump
 // keeperJobId 없으면 (= deploy 안 된 워크플로우) 409로 거부
 workflowsRouter.post('/:id/run', async (c) => {
   const workflow = await workflowStore.get(c.req.param('id'));
@@ -80,7 +80,38 @@ workflowsRouter.post('/:id/run', async (c) => {
   });
   const execution = await getKeeperHubClient().executeWorkflow(workflow.keeperJobId);
   log('keeperhub', 'execution triggered', execution);
-  return c.json({ workflow, execution });
+
+  const recorded = await workflowStore.recordRun(workflow.id, execution);
+  log('store', 'execution recorded', {
+    id: workflow.id,
+    runCount: recorded?.workflow.runCount,
+  });
+
+  return c.json({ workflow: recorded?.workflow ?? workflow, execution });
+});
+
+// 실시간 상태 조회 — KeeperHub 측 job 상태를 그대로 패스스루
+// 프론트가 짧은 주기로 폴링해서 KeeperHub 측 변화를 보여줄 수 있음
+workflowsRouter.get('/:id/status', async (c) => {
+  const workflow = await workflowStore.get(c.req.param('id'));
+  if (!workflow) {
+    return c.json({ error: 'workflow not found' }, 404);
+  }
+  if (!workflow.keeperJobId) {
+    return c.json({ error: 'workflow not deployed yet' }, 409);
+  }
+  const status = await getKeeperHubClient().getJobStatus(workflow.keeperJobId);
+  return c.json({ status });
+});
+
+// 최근 실행 이력 — Run now가 누적된 기록 (최신 순, 기본 20건)
+workflowsRouter.get('/:id/executions', async (c) => {
+  const workflow = await workflowStore.get(c.req.param('id'));
+  if (!workflow) {
+    return c.json({ error: 'workflow not found' }, 404);
+  }
+  const executions = await executionStore.listByWorkflow(workflow.id);
+  return c.json({ executions });
 });
 
 // 일시정지 — KeeperHub native 없음, 우리 store status만 'paused'로 마킹
