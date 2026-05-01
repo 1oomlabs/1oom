@@ -26,6 +26,19 @@ const publishSchema = z.object({
       }),
     ])
     .default({ type: 'free' }),
+  onchain: z
+    .object({
+      txHash: z.string(),
+      contentHash: z.string(),
+      uri: z.string(),
+      status: z.enum(['pending', 'confirmed']).default('pending'),
+    })
+    .optional(),
+});
+
+const confirmOnchainSchema = z.object({
+  registryListingId: z.number().int().optional(),
+  confirmedAt: z.number().int().optional(),
 });
 
 // 게시된 listing 목록 — tag/author/protocol 필터 + newest/popular 정렬 + limit
@@ -66,7 +79,7 @@ marketplaceRouter.get('/:id', async (c) => {
 
 // 워크플로우를 마켓에 게시 — 우리 store에서 워크플로우 가져와서 listing에 스냅샷
 marketplaceRouter.post('/', zValidator('json', publishSchema), async (c) => {
-  const { workflowId, author, tags, pricing } = c.req.valid('json');
+  const { workflowId, author, tags, pricing, onchain } = c.req.valid('json');
   const workflow = await workflowStore.get(workflowId);
   if (!workflow) {
     return c.json({ error: 'workflow not found' }, 404);
@@ -77,6 +90,18 @@ marketplaceRouter.post('/', zValidator('json', publishSchema), async (c) => {
     author,
     tags,
     pricing,
+    stats: onchain
+      ? {
+          installs: 0,
+          runs: 0,
+          onchain: {
+            status: onchain.status,
+            txHash: onchain.txHash,
+            contentHash: onchain.contentHash,
+            uri: onchain.uri,
+          },
+        }
+      : undefined,
   });
   log('marketplace', 'published', {
     listingId: listing.id,
@@ -85,6 +110,24 @@ marketplaceRouter.post('/', zValidator('json', publishSchema), async (c) => {
     tags,
   });
   return c.json({ listing }, 201);
+});
+
+// 온체인 tx가 receipt/event까지 확인된 뒤 pending -> confirmed로 상태 전환
+marketplaceRouter.patch('/:id', zValidator('json', confirmOnchainSchema), async (c) => {
+  const id = c.req.param('id');
+  const { registryListingId, confirmedAt } = c.req.valid('json');
+
+  const listing = await marketplaceStore.confirmOnchain(id, { registryListingId, confirmedAt });
+  if (!listing) {
+    return c.json({ error: 'listing not found or onchain metadata missing' }, 404);
+  }
+
+  log('marketplace', 'onchain confirmed', {
+    listingId: id,
+    txHash: listing.stats.onchain?.txHash,
+    registryListingId,
+  });
+  return c.json({ listing });
 });
 
 // 언퍼블리시 — listing 자체만 삭제, 원본 워크플로우는 그대로
