@@ -41,6 +41,10 @@ const expectedActionNames = [
   'BROWSE_TEMPLATES',
   'DESCRIBE_TEMPLATE',
   'CREATE_WORKFLOW_DEMO',
+  'CHECK_AXL_NODE',
+  'SEND_AXL_WORKFLOW_DRAFT',
+  'RECEIVE_AXL_MESSAGES',
+  'EXECUTE_RECEIVED_AXL_WORKFLOW',
 ] as const;
 
 function assert(condition: unknown, message: string): asserts condition {

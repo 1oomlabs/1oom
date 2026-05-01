@@ -6,7 +6,14 @@ import {
   templates,
 } from '@loomlabs/templates';
 
-import { createAxlDiscoveryMetadata, createAxlPublishDraft } from './axl-flow';
+import { AxlClient } from './axl-client';
+import { AXL_DRY_RUN_NOTICE, createAxlDryRunProjection } from './axl-dry-run';
+import type { AxlConnectionType, AxlDryRunProjection } from './axl-dry-run';
+import {
+  canonicalWorkflowJson,
+  createAxlDiscoveryMetadata,
+  createAxlPublishDraft,
+} from './axl-flow';
 import type { AxlPublishDraft } from './axl-flow';
 
 /**
@@ -18,8 +25,9 @@ import type { AxlPublishDraft } from './axl-flow';
  *   3. BROWSE_TEMPLATES - list local templates and Sepolia metadata status.
  *   4. DESCRIBE_TEMPLATE - describe one local template and its Sepolia demo metadata.
  *   5. CREATE_WORKFLOW_DEMO - create a dry-run demo workflow candidate only.
+ *   6. CHECK/SEND/RECEIVE/EXECUTE AXL actions - opt-in semi-live AXL transport.
  *
- * Types follow @elizaos/core 2.0.0-alpha.77 while keeping every action dry-run only.
+ * Types follow @elizaos/core 2.0.0-alpha.77 while keeping the default actions dry-run only.
  * Runtime compatibility remains INTEGRATION_RISK until verified inside an actual ElizaOS agent.
  */
 
@@ -34,6 +42,11 @@ export type LoomPlugin = Plugin & {
     forbiddenRuntimeRequirements: readonly string[];
     blockedExternalCalls: readonly string[];
     noProductionExecutionTerms: readonly string[];
+  };
+  axl: {
+    executionMode: 'semi-live-opt-in';
+    actions: readonly string[];
+    requiredEnv: readonly string[];
   };
   actions: LoomAction[];
 };
@@ -60,11 +73,19 @@ type DemoWorkflowCandidate = {
   intent: DemoIntent;
   workflowDraft: DryRunWorkflowDraft;
   axlFlow: AxlPublishDraft['axlFlow'];
+  axlDryRun: AxlDryRunProjection;
   registryHints: AxlPublishDraft['registryHints'];
   onchainPublishDraft: AxlPublishDraft['onchainPublishDraft'];
   axlEnvelopeDraft: AxlPublishDraft['axlEnvelopeDraft'];
   templateCandidates: ReturnType<typeof summarizeTemplate>[];
   unsupportedOperations: string[];
+};
+
+type AxlDryRunOptions = {
+  connectionType?: AxlConnectionType;
+  peerId?: string;
+  serviceName?: string;
+  agentName?: string;
 };
 
 type DemoIntent = {
@@ -273,6 +294,7 @@ function createDryRunWorkflowDraft(
 
 async function createDryRunWorkflowCandidate(message: {
   text: string;
+  axl?: AxlDryRunOptions;
 }): Promise<DemoWorkflowCandidate> {
   const templateCandidates = findTemplateCandidates(message.text);
   const intent = inferDemoIntent(message.text, templateCandidates);
@@ -300,6 +322,25 @@ async function createDryRunWorkflowCandidate(message: {
     contracts: workflowTemplate.sepolia?.contracts ?? [],
     unsupportedOperations,
   });
+  const axlDryRun = createAxlDryRunProjection({
+    workflow: {
+      id: workflowTemplate.id,
+      name: workflowTemplate.name,
+      protocol: workflowTemplate.protocol,
+      category: workflowTemplate.category,
+      description: workflowTemplate.description,
+      chainId: workflowTemplate.sepolia?.chainId ?? null,
+      network: workflowTemplate.sepolia?.network ?? null,
+      parameters: intent.parameters,
+      trigger: workflowTemplate.trigger,
+      actions: workflowTemplate.actions,
+    },
+    userRequest: message.text,
+    connectionType: message.axl?.connectionType,
+    peerId: message.axl?.peerId,
+    serviceName: message.axl?.serviceName,
+    agentName: message.axl?.agentName,
+  });
 
   return {
     ok: true,
@@ -321,6 +362,7 @@ async function createDryRunWorkflowCandidate(message: {
     intent,
     workflowDraft: createDryRunWorkflowDraft(workflowTemplate, intent, unsupportedOperations),
     axlFlow: axlPublishDraft.axlFlow,
+    axlDryRun,
     registryHints: axlPublishDraft.registryHints,
     onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
     axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
@@ -365,6 +407,7 @@ function createTemplateNotFoundResult(): ActionResult {
 }
 
 const validateDryRunAction: LoomAction['validate'] = async () => true;
+const validateAxlAction: LoomAction['validate'] = async () => true;
 
 function getPromptOption(
   options: HandlerOptions | Record<string, unknown> | undefined,
@@ -379,12 +422,77 @@ function getPromptOption(
   return typeof prompt === 'string' ? prompt : undefined;
 }
 
+function getAxlDryRunOptions(
+  options: HandlerOptions | Record<string, unknown> | undefined,
+): AxlDryRunOptions {
+  if (!options || !('parameters' in options) || typeof options.parameters !== 'object') {
+    return {};
+  }
+
+  const parameters = options.parameters as Record<string, unknown> | null;
+  const connectionType = parameters?.connectionType;
+
+  return {
+    connectionType:
+      connectionType === 'MCP' || connectionType === 'A2A' ? connectionType : undefined,
+    peerId: getStringParameter(parameters, 'peerId'),
+    serviceName: getStringParameter(parameters, 'serviceName'),
+    agentName: getStringParameter(parameters, 'agentName'),
+  };
+}
+
+function getStringParameter(
+  parameters: Record<string, unknown> | null | undefined,
+  key: string,
+): string | undefined {
+  const value = parameters?.[key];
+
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function createAxlUnavailableResult(actionName: string, error: unknown): ActionResult {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return createSemiLiveActionResult(`${actionName} is unavailable: ${message}`, {
+    ok: false,
+    executionMode: 'semi-live-axl',
+    integrationRisk: INTEGRATION_RISK,
+    status: 'unavailable',
+    error: message,
+  });
+}
+
+function createSemiLiveActionResult(text: string, data: Record<string, unknown>): ActionResult {
+  return {
+    success: true,
+    text,
+    data: data as NonNullable<ActionResult['data']>,
+  };
+}
+
+async function createAxlWorkflowEnvelope(message: Memory): Promise<AxlPublishDraft> {
+  const data = await createDryRunWorkflowCandidate({ text: getMessageText(message) });
+
+  return {
+    axlFlow: data.axlFlow,
+    registryHints: data.registryHints,
+    onchainPublishDraft: data.onchainPublishDraft,
+    axlEnvelopeDraft: data.axlEnvelopeDraft,
+    canonicalWorkflowJson: canonicalWorkflowJson(data.axlEnvelopeDraft.payload.workflow),
+  };
+}
+
 export const createWorkflowAction: LoomAction = {
   name: 'CREATE_WORKFLOW',
   description: 'Create a dry-run DeFi automation workflow candidate from natural language.',
   validate: validateDryRunAction,
-  handler: async (_runtime, message) =>
-    createActionResult(await createDryRunWorkflowCandidate({ text: getMessageText(message) })),
+  handler: async (_runtime, message, _state, options?: HandlerOptions | Record<string, unknown>) =>
+    createActionResult(
+      await createDryRunWorkflowCandidate({
+        text: getPromptOption(options) ?? getMessageText(message),
+        axl: getAxlDryRunOptions(options),
+      }),
+    ),
 };
 
 export const browseMarketplaceAction: LoomAction = {
@@ -399,6 +507,7 @@ export const browseMarketplaceAction: LoomAction = {
       executionMode: DRY_RUN_ONLY,
       integrationRisk: INTEGRATION_RISK,
       safety: dryRunSafetyPayload(),
+      axlModeNotice: AXL_DRY_RUN_NOTICE,
       ...createAxlDiscoveryMetadata(),
       items: templates.map((template) => {
         const summary = summarizeTemplate(template);
@@ -418,6 +527,21 @@ export const browseMarketplaceAction: LoomAction = {
           contracts: summary.sepolia?.contracts ?? [],
           unsupportedOperations,
         });
+        const axlDryRun = createAxlDryRunProjection({
+          workflow: {
+            id: summary.id,
+            name: summary.name,
+            protocol: summary.protocol,
+            category: summary.category,
+            description: summary.description,
+            chainId: summary.sepolia?.chainId ?? null,
+            network: summary.sepolia?.network ?? null,
+            parameters: intent.parameters,
+            trigger: summary.trigger,
+            actions: summary.actions,
+          },
+          userRequest: `Browse ${summary.name} as an AXL-compatible dry-run workflow`,
+        });
 
         return {
           id: `demo-${template.id}`,
@@ -427,6 +551,7 @@ export const browseMarketplaceAction: LoomAction = {
           registryHints: axlPublishDraft.registryHints,
           onchainPublishDraft: axlPublishDraft.onchainPublishDraft,
           axlEnvelopeDraft: axlPublishDraft.axlEnvelopeDraft,
+          axlDryRun,
         };
       }),
     },
@@ -486,8 +611,113 @@ export const createWorkflowDemoAction: LoomAction = {
     createActionResult(
       await createDryRunWorkflowCandidate({
         text: getPromptOption(options) ?? getMessageText(message),
+        axl: getAxlDryRunOptions(options),
       }),
     ),
+};
+
+export const checkAxlNodeAction: LoomAction = {
+  name: 'CHECK_AXL_NODE',
+  description: 'Check the configured Gensyn AXL node topology.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const topology = await new AxlClient().getTopology();
+
+      return createSemiLiveActionResult('Loaded AXL node topology.', {
+        ok: true,
+        executionMode: 'semi-live-axl',
+        integrationRisk: INTEGRATION_RISK,
+        topology,
+      });
+    } catch (error) {
+      return createAxlUnavailableResult('CHECK_AXL_NODE', error);
+    }
+  },
+};
+
+export const sendAxlWorkflowDraftAction: LoomAction = {
+  name: 'SEND_AXL_WORKFLOW_DRAFT',
+  description: 'Send a workflow draft envelope through the configured Gensyn AXL node.',
+  validate: validateAxlAction,
+  handler: async (_runtime, message) => {
+    try {
+      const draft = await createAxlWorkflowEnvelope(message);
+      const sendResult = await new AxlClient().sendEnvelope(draft.axlEnvelopeDraft);
+
+      return createSemiLiveActionResult('Sent workflow draft envelope through AXL.', {
+        ok: true,
+        executionMode: 'semi-live-axl',
+        integrationRisk: INTEGRATION_RISK,
+        sendResult,
+        onchainPublishDraft: draft.onchainPublishDraft,
+        axlEnvelopeDraft: draft.axlEnvelopeDraft,
+      });
+    } catch (error) {
+      return createAxlUnavailableResult('SEND_AXL_WORKFLOW_DRAFT', error);
+    }
+  },
+};
+
+export const receiveAxlMessagesAction: LoomAction = {
+  name: 'RECEIVE_AXL_MESSAGES',
+  description: 'Receive one pending Gensyn AXL message from the configured node.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const message = await new AxlClient().receiveMessage();
+
+      return createSemiLiveActionResult(
+        message ? 'Received one AXL message.' : 'No AXL messages are pending.',
+        {
+          ok: true,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: message ? 'received' : 'empty',
+          message,
+        },
+      );
+    } catch (error) {
+      return createAxlUnavailableResult('RECEIVE_AXL_MESSAGES', error);
+    }
+  },
+};
+
+export const executeReceivedAxlWorkflowAction: LoomAction = {
+  name: 'EXECUTE_RECEIVED_AXL_WORKFLOW',
+  description: 'Receive a verified AXL workflow envelope and hand it to the Loom API pipeline.',
+  validate: validateAxlAction,
+  handler: async () => {
+    try {
+      const client = new AxlClient();
+      const message = await client.receiveMessage();
+
+      if (!message) {
+        return createSemiLiveActionResult('No AXL workflow envelope is pending for execution.', {
+          ok: false,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: 'empty',
+        });
+      }
+
+      const execution = await client.executeReceivedWorkflow(message);
+
+      return createSemiLiveActionResult(
+        'Submitted received AXL workflow to the Loom API execution pipeline.',
+        {
+          ok: true,
+          executionMode: 'semi-live-axl',
+          integrationRisk: INTEGRATION_RISK,
+          status: 'submitted',
+          fromPeerId: message.fromPeerId,
+          execution,
+        },
+      );
+    } catch (error) {
+      return createAxlUnavailableResult('EXECUTE_RECEIVED_AXL_WORKFLOW', error);
+    }
+  },
 };
 
 export const loomPlugin: LoomPlugin = {
@@ -500,12 +730,32 @@ export const loomPlugin: LoomPlugin = {
     blockedExternalCalls: ['keeperhub-deploy', 'llm-api-call', 'apps-api-call'],
     noProductionExecutionTerms: [],
   },
+  axl: {
+    executionMode: 'semi-live-opt-in',
+    actions: [
+      'CHECK_AXL_NODE',
+      'SEND_AXL_WORKFLOW_DRAFT',
+      'RECEIVE_AXL_MESSAGES',
+      'EXECUTE_RECEIVED_AXL_WORKFLOW',
+    ],
+    requiredEnv: [
+      'AXL_NODE_URL',
+      'AXL_DESTINATION_PEER_ID',
+      'LOOM_API_URL',
+      'LOOM_WORKFLOW_OWNER',
+      'ENABLE_AXL_AGENT_EXECUTION',
+    ],
+  },
   actions: [
     createWorkflowAction,
     browseMarketplaceAction,
     browseTemplatesAction,
     describeTemplateAction,
     createWorkflowDemoAction,
+    checkAxlNodeAction,
+    sendAxlWorkflowDraftAction,
+    receiveAxlMessagesAction,
+    executeReceivedAxlWorkflowAction,
   ],
 };
 

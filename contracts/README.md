@@ -46,6 +46,15 @@ cast call $MARKETPLACE_REGISTRY_ADDRESS "curator()(address)" --rpc-url sepolia
 cast call $MARKETPLACE_REGISTRY_ADDRESS "listingCount()(uint256)" --rpc-url sepolia
 ```
 
+Current Sepolia deployment:
+
+```txt
+MarketplaceRegistry: 0x42Fb9D61dDed6491874225e00F5d9D69612D09CB
+Curator:             0xc2e06F8B2080e706E02685e49A07E8F0c6d22A2F
+Initial listings:    0
+Tx hash:             0xcb1ef512de4e9aba5fc2f13285295c051c9f2d394101988a5949c36c55873388
+```
+
 ## Lido mock contracts
 
 The Lido Sepolia integration uses mock contracts because the legacy Lido Sepolia

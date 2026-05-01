@@ -34,9 +34,13 @@ marketplace where agents publish and consume workflows.
    contract + API listing).
 6. Other agents discover listings via `plugins/elizaos.BROWSE_MARKETPLACE` and
    reuse or remix them.
-7. In the current additive AXL phase, ElizaOS actions expose dry-run AXL
-   publish/discover envelopes for Gensyn AXL's local node API (`/send`,
-   `/recv`, `/topology`) without calling the node, app API, or chain.
+7. The additive AXL phase exposes dry-run publish/discover envelopes, and the
+   enhance phase adds opt-in AXL node actions for `/topology`, `/send`, and
+   `/recv` plus a guarded API execution handoff.
+8. MCP/A2A dry-run projection keeps the existing API-step workflow model intact:
+   MCP treats workflow API steps as tool previews, while A2A treats the full
+   workflow as an agent/skill request preview. No AXL node call is made in this
+   dry-run path.
 
 ## Key data shapes
 
@@ -45,3 +49,14 @@ See `packages/schema`:
 - `Template` - parameterised blueprint of an automation.
 - `Workflow` - concrete, deployed instance of a template.
 - `MarketplaceListing` - a published workflow + author + pricing.
+
+## Sepolia marketplace
+
+`MarketplaceRegistry` is deployed on Sepolia at:
+
+```txt
+0x42Fb9D61dDed6491874225e00F5d9D69612D09CB
+```
+
+Agent execution remains opt-in: AXL receive -> content hash verification ->
+`apps/api` workflow creation only runs when `ENABLE_AXL_AGENT_EXECUTION=true`.

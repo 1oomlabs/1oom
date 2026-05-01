@@ -6,6 +6,13 @@ import {
   templates as templateRegistry,
 } from '@loomlabs/templates';
 
+import {
+  AxlClient,
+  type AxlRequestInit,
+  type AxlResponseLike,
+  parseAxlEnvelope,
+} from './axl-client';
+import { createAxlPublishDraft } from './axl-flow';
 import { runElizaOsRuntimeLoadingTest } from './elizaos-runtime-loading.test';
 import loomPlugin from './index';
 import { runPhase1ElizaOsSmokeTests } from './phase-1-smoke.test';
@@ -68,6 +75,7 @@ type MarketplaceItemSummary = {
   registryHints?: RegistryHintsSummary;
   onchainPublishDraft?: OnchainPublishDraftSummary;
   axlEnvelopeDraft?: AxlEnvelopeDraftSummary;
+  axlDryRun?: AxlDryRunSummary;
 };
 
 type AxlFlowSummary = {
@@ -109,6 +117,77 @@ type AxlEnvelopeDraftSummary = {
   };
 };
 
+type AxlDryRunSummary = {
+  mode?: string;
+  axlModeNotice?: string;
+  connectionType?: string;
+  protocol?: string;
+  peerId?: string;
+  serviceName?: string;
+  agentName?: string;
+  dryRunOnly?: boolean;
+  selectedWorkflow?: {
+    id?: string;
+    name?: string;
+  };
+  mappedApiSteps?: Array<{ type?: string; dryRunOnly?: boolean }>;
+  mcpToolRegistry?: {
+    protocol?: string;
+    serviceName?: string;
+    dryRunOnly?: boolean;
+    tools?: Array<{
+      name?: string;
+      inputSchema?: Record<string, unknown>;
+      mappedApiStepId?: string;
+      dryRunOnly?: boolean;
+      wouldExecute?: string;
+    }>;
+  };
+  globalMcpTools?: Array<{
+    name?: string;
+    inputSchema?: Record<string, unknown>;
+    dryRunOnly?: boolean;
+    wouldCall?: string;
+  }>;
+  a2aAgentCard?: {
+    protocol?: string;
+    agentName?: string;
+    dryRunOnly?: boolean;
+    selectedWorkflow?: {
+      id?: string;
+    };
+    inputModes?: string[];
+    outputModes?: string[];
+    skills?: Array<{
+      id?: string;
+      mappedWorkflowId?: string;
+      mappedApiStepIds?: string[];
+      inputModes?: string[];
+      outputModes?: string[];
+      dryRunOnly?: boolean;
+    }>;
+  };
+  generatedAxlRequestPreview?: {
+    method?: string;
+    url?: string;
+    body?: Record<string, unknown>;
+  };
+  availableConnectionPreviews?: {
+    mcp?: { url?: string; body?: Record<string, unknown> };
+    a2a?: { url?: string; body?: Record<string, unknown> };
+  };
+  defiExecutionPlan?: {
+    userRequest?: string;
+    steps?: unknown[];
+  };
+  safety?: {
+    signing?: boolean;
+    broadcast?: boolean;
+    requiresUserApproval?: boolean;
+    dryRunOnly?: boolean;
+  };
+};
+
 const marketplaceTemplateFields = [
   'id',
   'name',
@@ -118,6 +197,14 @@ const marketplaceTemplateFields = [
   'parameters',
   'trigger',
   'actions',
+] as const;
+
+const dryRunActionNames = [
+  'CREATE_WORKFLOW',
+  'BROWSE_MARKETPLACE',
+  'BROWSE_TEMPLATES',
+  'DESCRIBE_TEMPLATE',
+  'CREATE_WORKFLOW_DEMO',
 ] as const;
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -294,6 +381,163 @@ function assertAxlEnvelopeDraft(actionName: string, draft: AxlEnvelopeDraftSumma
   assert(draft.route?.recvEndpoint === '/recv', `${actionName} envelope recv endpoint`);
 }
 
+function assertAxlDryRunProjection(
+  actionName: string,
+  dryRun: AxlDryRunSummary | undefined,
+  expectedTemplateId: string,
+  expectedProtocol: 'MCP' | 'A2A',
+): void {
+  assert(dryRun, `${actionName} must expose axlDryRun`);
+  assert(dryRun.mode === 'AXL_DRY_RUN', `${actionName} must mark AXL dry-run mode`);
+  assert(
+    dryRun.axlModeNotice?.includes('localhost:9002'),
+    `${actionName} must explain localhost:9002 AXL dry-run behavior`,
+  );
+  assert(dryRun.connectionType === expectedProtocol, `${actionName} connectionType mismatch`);
+  assert(dryRun.protocol === expectedProtocol, `${actionName} protocol mismatch`);
+  assert(dryRun.dryRunOnly === true, `${actionName} must stay dry-run-only`);
+  assert(
+    dryRun.selectedWorkflow?.id === expectedTemplateId,
+    `${actionName} selected workflow mismatch`,
+  );
+  assert(Array.isArray(dryRun.mappedApiSteps), `${actionName} must map API steps`);
+
+  const stepTypes = dryRun.mappedApiSteps.map((step) => step.type);
+  for (const stepType of ['quote', 'riskCheck', 'simulate', 'buildUnsignedTx']) {
+    assert(stepTypes.includes(stepType), `${actionName} must include ${stepType} API step`);
+  }
+
+  assert(
+    dryRun.mappedApiSteps.every((step) => step.dryRunOnly === true),
+    `${actionName} API steps must be dry-run-only`,
+  );
+  assertMcpToolRegistry(actionName, dryRun, expectedTemplateId, stepTypes);
+  assertA2aAgentCard(actionName, dryRun, expectedTemplateId);
+  assert(dryRun.defiExecutionPlan?.steps?.length === 4, `${actionName} needs execution plan`);
+  assert(dryRun.safety?.signing === false, `${actionName} must not sign`);
+  assert(dryRun.safety?.broadcast === false, `${actionName} must not broadcast`);
+  assert(dryRun.safety?.requiresUserApproval === true, `${actionName} must require user approval`);
+  assert(dryRun.safety?.dryRunOnly === true, `${actionName} safety must be dry-run-only`);
+  assert(
+    dryRun.availableConnectionPreviews?.mcp?.url?.includes('/mcp/'),
+    `${actionName} must expose MCP preview`,
+  );
+  assert(
+    dryRun.availableConnectionPreviews?.a2a?.url?.includes('/a2a/'),
+    `${actionName} must expose A2A preview`,
+  );
+
+  if (expectedProtocol === 'MCP') {
+    assert(
+      dryRun.generatedAxlRequestPreview?.url?.includes('/mcp/'),
+      `${actionName} must select MCP preview`,
+    );
+    assert(
+      dryRun.generatedAxlRequestPreview?.body?.method === 'tools/list',
+      `${actionName} MCP preview must request tools/list`,
+    );
+  } else {
+    assert(
+      dryRun.generatedAxlRequestPreview?.url?.includes('/a2a/'),
+      `${actionName} must select A2A preview`,
+    );
+    assert(
+      dryRun.generatedAxlRequestPreview?.body?.method === 'message/send',
+      `${actionName} A2A preview must send message`,
+    );
+    assert(
+      JSON.stringify(dryRun.generatedAxlRequestPreview?.body).includes(
+        'run this DeFi workflow in dry-run mode only',
+      ),
+      `${actionName} A2A preview must force dry-run instructions`,
+    );
+  }
+}
+
+function assertMcpToolRegistry(
+  actionName: string,
+  dryRun: AxlDryRunSummary,
+  expectedTemplateId: string,
+  stepTypes: Array<string | undefined>,
+): void {
+  const registry = dryRun.mcpToolRegistry;
+
+  assert(registry, `${actionName} must expose MCP tool registry`);
+  assert(registry.protocol === 'MCP', `${actionName} MCP registry protocol`);
+  assert(typeof registry.serviceName === 'string', `${actionName} MCP service name`);
+  assert(registry.dryRunOnly === true, `${actionName} MCP registry must stay dry-run-only`);
+  assert(Array.isArray(registry.tools), `${actionName} MCP registry must expose tools`);
+  assert(registry.tools.length === 4, `${actionName} MCP registry must expose four API tools`);
+
+  for (const stepType of stepTypes) {
+    const tool = registry.tools.find((candidate) => candidate.name === stepType);
+
+    assert(tool, `${actionName} MCP registry must include ${stepType}`);
+    assert(tool.dryRunOnly === true, `${actionName} MCP tool ${stepType} must be dry-run-only`);
+    assert(
+      tool.mappedApiStepId?.includes(`${expectedTemplateId}:`),
+      `${actionName} MCP tool ${stepType} must reference mapped API step`,
+    );
+    assert(tool.inputSchema?.type === 'object', `${actionName} MCP tool ${stepType} schema`);
+    assert(
+      typeof tool.wouldExecute === 'string' && tool.wouldExecute.includes('no state-changing'),
+      `${actionName} MCP tool ${stepType} must describe dry-run execution`,
+    );
+  }
+
+  const globalTools = dryRun.globalMcpTools ?? [];
+  const browseMarketplace = globalTools.find((tool) => tool.name === 'browse_marketplace');
+  const createWorkflow = globalTools.find((tool) => tool.name === 'create_workflow');
+
+  assert(browseMarketplace, `${actionName} must expose browse_marketplace global MCP tool`);
+  assert(createWorkflow, `${actionName} must expose create_workflow global MCP tool`);
+  assert(
+    browseMarketplace.wouldCall === 'GET /api/marketplace',
+    `${actionName} browse_marketplace must only describe marketplace API call`,
+  );
+  assert(
+    createWorkflow.wouldCall === 'POST /api/workflows',
+    `${actionName} create_workflow must only describe workflow API call`,
+  );
+  assert(
+    browseMarketplace.dryRunOnly === true && createWorkflow.dryRunOnly === true,
+    `${actionName} global MCP tools must stay dry-run-only`,
+  );
+  assert(
+    browseMarketplace.inputSchema?.type === 'object' &&
+      createWorkflow.inputSchema?.type === 'object',
+    `${actionName} global MCP tools must expose input schemas`,
+  );
+}
+
+function assertA2aAgentCard(
+  actionName: string,
+  dryRun: AxlDryRunSummary,
+  expectedTemplateId: string,
+): void {
+  const card = dryRun.a2aAgentCard;
+
+  assert(card, `${actionName} must expose A2A agent card`);
+  assert(card.protocol === 'A2A', `${actionName} A2A card protocol`);
+  assert(card.dryRunOnly === true, `${actionName} A2A card must stay dry-run-only`);
+  assert(card.selectedWorkflow?.id === expectedTemplateId, `${actionName} A2A selected workflow`);
+  assert(card.inputModes?.includes('text/plain'), `${actionName} A2A input mode`);
+  assert(card.outputModes?.includes('application/json'), `${actionName} A2A output mode`);
+  assert(Array.isArray(card.skills) && card.skills.length === 1, `${actionName} A2A skill`);
+
+  const skill = card.skills[0];
+
+  assert(skill?.id === expectedTemplateId, `${actionName} A2A skill id`);
+  assert(skill.mappedWorkflowId === expectedTemplateId, `${actionName} A2A mapped workflow`);
+  assert(skill.dryRunOnly === true, `${actionName} A2A skill must stay dry-run-only`);
+  assert(
+    skill.mappedApiStepIds?.length === 4,
+    `${actionName} A2A skill must reference mapped API steps`,
+  );
+  assert(skill.inputModes?.includes('text/plain'), `${actionName} A2A skill input mode`);
+  assert(skill.outputModes?.includes('application/json'), `${actionName} A2A skill output mode`);
+}
+
 function assertDemoResponseQuality(
   result: ActionResult | undefined,
   expectedTemplateId: string,
@@ -332,6 +576,12 @@ function assertDemoResponseQuality(
     data.onchainPublishDraft as OnchainPublishDraftSummary,
   );
   assertAxlEnvelopeDraft('CREATE_WORKFLOW_DEMO', data.axlEnvelopeDraft as AxlEnvelopeDraftSummary);
+  assertAxlDryRunProjection(
+    'CREATE_WORKFLOW_DEMO',
+    data.axlDryRun as AxlDryRunSummary,
+    expectedTemplateId,
+    'A2A',
+  );
 }
 
 function assertMarketplaceTemplateFields(template: TemplateSummary, label: string): void {
@@ -408,6 +658,111 @@ function assertLidoMockContracts(template: TemplateSummary): void {
   }
 }
 
+function createMockAxlDraft() {
+  return createAxlPublishDraft({
+    templateId: 'lido-stake',
+    templateName: 'Lido ETH Stake',
+    protocol: 'lido',
+    category: 'staking',
+    chainId: 11155111,
+    network: 'sepolia',
+    parameters: { amount: '0.01' },
+    trigger: { type: 'manual' },
+    actions: [],
+    runtimePlaceholderValues: [],
+    contracts: [],
+    unsupportedOperations: [],
+  });
+}
+
+async function assertAxlClientSemiLiveContracts(): Promise<void> {
+  const draft = createMockAxlDraft();
+  const requests: Array<{ input: string; init?: AxlRequestInit }> = [];
+  const fetchImpl = async (input: string, init?: AxlRequestInit): Promise<AxlResponseLike> => {
+    requests.push({ input, init });
+
+    if (input.endsWith('/topology')) {
+      return mockJsonResponse({ peers: ['peer-a'] });
+    }
+
+    if (input.endsWith('/send')) {
+      return mockTextResponse('', { 'x-sent-bytes': '42' });
+    }
+
+    if (input.endsWith('/recv')) {
+      return mockTextResponse(JSON.stringify(draft.axlEnvelopeDraft), {
+        'x-from-peer-id': 'peer-a',
+      });
+    }
+
+    if (input.endsWith('/api/workflows')) {
+      return mockJsonResponse({
+        workflow: { id: 'workflow-1', keeperJobId: 'keeper-1', status: 'deployed' },
+      });
+    }
+
+    throw new Error(`Unexpected fetch call ${input}`);
+  };
+
+  const client = new AxlClient({
+    fetchImpl,
+    config: {
+      axlNodeUrl: 'http://axl.local',
+      destinationPeerId: 'peer-b',
+      loomApiUrl: 'http://api.local',
+      workflowOwner: '0x0000000000000000000000000000000000000001',
+      enableAgentExecution: true,
+    },
+  });
+
+  const topology = await client.getTopology();
+  assert(JSON.stringify(topology).includes('peer-a'), 'AXL topology must be returned');
+
+  const sendResult = await client.sendEnvelope(draft.axlEnvelopeDraft);
+  assert(sendResult.destinationPeerId === 'peer-b', 'AXL send must use configured peer id');
+  assert(sendResult.sentBytes === 42, 'AXL send must parse x-sent-bytes');
+
+  const message = await client.receiveMessage();
+  assert(message?.fromPeerId === 'peer-a', 'AXL recv must parse sender peer id');
+  assert(message.envelope, 'AXL recv must parse workflow envelope');
+  assert(parseAxlEnvelope(message.bodyText), 'AXL envelope parser must accept valid JSON');
+
+  const execution = await client.executeReceivedWorkflow(message);
+  assert(JSON.stringify(execution).includes('keeper-1'), 'AXL execution must call Loom API');
+  assert(
+    requests.some((request) => request.input === 'http://api.local/api/workflows'),
+    'AXL execution must call configured Loom API workflow endpoint',
+  );
+}
+
+function mockJsonResponse(body: unknown): AxlResponseLike {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: createMockHeaders({}),
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+function mockTextResponse(body: string, headers: Record<string, string>): AxlResponseLike {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: createMockHeaders(headers),
+    json: async () => JSON.parse(body || '{}') as unknown,
+    text: async () => body,
+  };
+}
+
+function createMockHeaders(headers: Record<string, string>): AxlResponseLike['headers'] {
+  return {
+    get: (name: string) => headers[name.toLowerCase()] ?? null,
+  };
+}
+
 export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> {
   assert(loomPlugin.name === 'loomlabs', 'plugin name must remain loomlabs');
   assert(Array.isArray(loomPlugin.actions), 'plugin actions must be an array');
@@ -425,23 +780,27 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
       `${action.name} validate must pass for dry-run smoke input`,
     );
 
-    const result = await action.handler(
-      mockRuntime,
-      mockMessage('templateId=lido-stake'),
-      undefined,
-      undefined,
-      undefined,
-      [],
-    );
+    if ((dryRunActionNames as readonly string[]).includes(action.name)) {
+      const result = await action.handler(
+        mockRuntime,
+        mockMessage('templateId=lido-stake'),
+        undefined,
+        undefined,
+        undefined,
+        [],
+      );
 
-    assertActionResult(action.name, result);
-    assertDryRunSafety(action.name, result);
+      assertActionResult(action.name, result);
+      assertDryRunSafety(action.name, result);
+    }
   }
 
   assert(loomPlugin.safety.blockedExternalCalls.includes('keeperhub-deploy'), 'must block deploy');
   assert(loomPlugin.safety.blockedExternalCalls.includes('llm-api-call'), 'must block LLM calls');
   assert(loomPlugin.safety.blockedExternalCalls.includes('apps-api-call'), 'must block API calls');
   assert(loomPlugin.safety.forbiddenRuntimeRequirements.includes('apiKey'), 'must forbid API keys');
+  await assertAxlClientSemiLiveContracts();
+  integrationCases.push('AXL client supports topology, send, receive, and execution handoff');
 
   const browseTemplatesAction = loomPlugin.actions.find(
     (action) => action.name === 'BROWSE_TEMPLATES',
@@ -487,8 +846,10 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     assert(item.registryHints, `${item.id} must expose registry hints`);
     assert(item.onchainPublishDraft, `${item.id} must expose publish draft`);
     assert(item.axlEnvelopeDraft, `${item.id} must expose AXL envelope draft`);
+    assert(item.axlDryRun, `${item.id} must expose MCP/A2A AXL dry-run preview`);
     assertOnchainPublishDraft(item.id, item.onchainPublishDraft);
     assertAxlEnvelopeDraft(item.id, item.axlEnvelopeDraft);
+    assertAxlDryRunProjection(item.id, item.axlDryRun, item.template.id, 'A2A');
   }
 
   integrationCases.push('BROWSE_MARKETPLACE exposes marketplace-safe template fields');
@@ -545,6 +906,29 @@ export async function runElizaOsRuntimeSmokeTest(): Promise<RuntimeSmokeResult> 
     assertDemoResponseQuality(result, expectedTemplateId);
     integrationCases.push(`CREATE_WORKFLOW_DEMO maps "${prompt}"`);
   }
+
+  const mcpResult = await demoAction.handler(
+    mockRuntime,
+    mockMessage('Use MCP to expose Aave dry-run quote tools'),
+    undefined,
+    {
+      parameters: {
+        prompt: 'Use MCP to expose Aave dry-run quote tools',
+        connectionType: 'MCP',
+        peerId: 'peer-demo',
+        serviceName: 'loomlabs.aave',
+      },
+    },
+  );
+  assertActionResult('CREATE_WORKFLOW_DEMO MCP dry-run', mcpResult);
+  assertDryRunSafety('CREATE_WORKFLOW_DEMO MCP dry-run', mcpResult);
+  assertAxlDryRunProjection(
+    'CREATE_WORKFLOW_DEMO MCP dry-run',
+    getDataRecord(mcpResult).axlDryRun as AxlDryRunSummary,
+    'aave-recurring-deposit',
+    'MCP',
+  );
+  integrationCases.push('CREATE_WORKFLOW_DEMO generates MCP dry-run request preview');
 
   const runtimeLoading = await runElizaOsRuntimeLoadingTest();
   integrationCases.push(...runtimeLoading.runtimeCases);
