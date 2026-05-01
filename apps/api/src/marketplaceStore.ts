@@ -76,4 +76,32 @@ export const marketplaceStore = {
     });
     return toListing(updated);
   },
+
+  async confirmOnchain(
+    id: string,
+    patch: { registryListingId?: number; confirmedAt?: number },
+  ): Promise<MarketplaceListing | undefined> {
+    const existing = await prisma.marketplaceListing.findUnique({ where: { id } });
+    if (!existing) return undefined;
+
+    const current = existing.stats as MarketplaceListing['stats'];
+    if (!current?.onchain) return undefined;
+
+    const nextStats: MarketplaceListing['stats'] = {
+      installs: current.installs,
+      runs: current.runs,
+      onchain: {
+        ...current.onchain,
+        status: 'confirmed',
+        registryListingId: patch.registryListingId ?? current.onchain.registryListingId,
+        confirmedAt: patch.confirmedAt ?? Date.now(),
+      },
+    };
+
+    const updated = await prisma.marketplaceListing.update({
+      where: { id },
+      data: { stats: nextStats as Prisma.InputJsonValue },
+    });
+    return toListing(updated);
+  },
 };

@@ -14,9 +14,11 @@ export function Header() {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="container-wide flex h-16 items-center justify-between gap-6">
-        <Link to="/" className="flex items-center gap-2">
+        <Link to="/" className="flex items-center gap-2.5">
           <Logo />
-          <span className="font-display text-base font-semibold tracking-tight">loomlabs</span>
+          <span className="font-display text-base font-semibold tracking-tight text-foreground md:text-[1.05rem]">
+            Loomlabs
+          </span>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
@@ -44,12 +46,13 @@ export function Header() {
 
 function Logo() {
   return (
-    <span
+    <img
+      src="/logo-transparent.png"
+      alt=""
       aria-hidden
-      className="relative inline-flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background"
-    >
-      <span className="font-display text-sm font-bold leading-none">L</span>
-      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent" />
-    </span>
+      className="h-8 w-8 object-contain md:h-9 md:w-9"
+      loading="eager"
+      decoding="async"
+    />
   );
 }

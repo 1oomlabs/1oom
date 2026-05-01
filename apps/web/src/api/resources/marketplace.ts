@@ -23,6 +23,17 @@ export interface PublishListingInput extends Record<string, unknown> {
   author: string;
   tags?: string[];
   pricing?: { type: 'free' } | { type: 'x402'; amount: string; token: string };
+  onchain?: {
+    txHash: string;
+    contentHash: string;
+    uri: string;
+    status?: 'pending' | 'confirmed';
+  };
+}
+
+export interface ConfirmListingInput extends Record<string, unknown> {
+  registryListingId?: number;
+  confirmedAt?: number;
 }
 
 class MarketplaceResource extends Resource<MarketplaceListing, MarketplaceListParams> {
@@ -36,6 +47,7 @@ export const marketplaceResource = new MarketplaceResource(apiClient);
 const baseHooks = makeResourceHooks<MarketplaceListing, MarketplaceListParams>(marketplaceResource);
 
 const { keys: marketplaceKeys, useList, useOne, useCreate, useRemove, useInvalidate } = baseHooks;
+const { useUpdate } = baseHooks;
 
 export { marketplaceKeys };
 export const useMarketplaceList: ResourceHooks<
@@ -59,4 +71,10 @@ export function usePublishToMarketplace(
   options?: MutationOpts<MarketplaceListing, PublishListingInput>,
 ): UseMutationResult<MarketplaceListing, ApiError, PublishListingInput> {
   return useCreate<PublishListingInput>(options);
+}
+
+export function useConfirmMarketplaceListing(
+  options?: MutationOpts<MarketplaceListing, { id: string; body: ConfirmListingInput }>,
+): UseMutationResult<MarketplaceListing, ApiError, { id: string; body: ConfirmListingInput }> {
+  return useUpdate<ConfirmListingInput>(options);
 }
