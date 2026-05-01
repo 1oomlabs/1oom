@@ -228,7 +228,7 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
         lidoMetadata.runtimePlaceholderValues.some(
           (entry) =>
             entry.placeholder === '$MOCK_WSTETH' &&
-            entry.value === '0x657e385278B022Bd4cCC980C71fe9Feb3Ea60f08',
+            entry.value === '0xc4936b9baA6E09a5Aa39dCE7001d24aAE84E97fF',
         ),
         'Lido metadata must resolve $MOCK_WSTETH',
       );
@@ -330,14 +330,14 @@ export const phase1TemplateSmokeTests: SmokeTestCase[] = [
       );
       assert(
         findDemoParameter('aave-recurring-deposit', 'token') ===
-          '0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357',
-        'Aave demo token must be Sepolia DAI',
+          '0xf8Fb3713D459D7C1018BD0A49D19b4C44290EBE5',
+        'Aave demo token must be Sepolia LINK',
       );
       assert(
         aaveMetadata.verificationTargets.some(
-          (target) => target.value === '0x29598b72eb5CeBd806C5dCD549490FdA35B13cD8',
+          (target) => target.value === '0x3FfAf50D4F4E96eB78f2407c090b72e86eCaed24',
         ),
-        'Aave verification target must include Sepolia aDAI',
+        'Aave verification target must include Sepolia aLINK',
       );
       assert(
         uniswapMetadata.runtimePlaceholderValues.some(
