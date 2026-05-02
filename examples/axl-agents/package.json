@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "publish": "tsx publisher.ts",
+    "send": "tsx publisher.ts",
     "receive": "tsx receiver.ts",
     "typecheck": "tsc --noEmit"
   },
