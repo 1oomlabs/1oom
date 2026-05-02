@@ -130,6 +130,6 @@ Then run the publisher / receiver pair from this directory:
   AXL_NODE_URL=http://127.0.0.1:9002 \\
     AXL_DESTINATION_PEER_ID=<node-b-public-key> \\
     PUBLISH_TEMPLATE_ID=lido-stake \\
-    pnpm publish
+    pnpm send
 
 DONE

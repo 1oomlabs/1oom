@@ -126,7 +126,7 @@ cd examples/axl-agents
 AXL_NODE_URL=http://127.0.0.1:9002 \
 AXL_DESTINATION_PEER_ID=<node-b-public-key> \
 PUBLISH_TEMPLATE_ID=lido-stake \
-  pnpm publish
+  pnpm send
 ```
 
 Expected receiver output:
@@ -184,4 +184,4 @@ sustained demo.
 
 - `publisher.ts` — envelope builder + AXL `/send` caller.
 - `receiver.ts` — `/recv` poller + optional Loom API bridge.
-- `package.json` — `pnpm publish` / `pnpm receive` scripts via `tsx`.
+- `package.json` — `pnpm send` / `pnpm receive` scripts via `tsx`.
