@@ -82,6 +82,9 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   const reset = useDraftStore((s) => s.reset);
 
   const extract = useExtractIntent({
+    onMutate: () => {
+      toast.info('Compiling…', 'Matching the prompt to a template');
+    },
     onSuccess: ({ intent: extracted }) => setIntent(extracted),
     onError: (err) => toast.error('Could not extract intent', err.message),
   });
@@ -89,6 +92,9 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   const invalidateMarketplace = useInvalidateMarketplace();
   const confirmListing = useConfirmMarketplaceListing();
   const publish = usePublishToMarketplace({
+    onMutate: () => {
+      toast.info('Publishing to marketplace…');
+    },
     onSuccess: async (listing) => {
       toast.success('Published to marketplace', listing.id.slice(0, 8));
       await invalidateMarketplace();
@@ -101,6 +107,9 @@ export function useWorkflowBuilderVM(): WorkflowBuilderVM {
   });
 
   const create = useCreateWorkflow<CreateWorkflowRequest>({
+    onMutate: () => {
+      toast.info('Deploying workflow…', 'KeeperHub registration in flight');
+    },
     onSuccess: async (workflow) => {
       toast.success('Workflow deployed', `Job ${workflow.id.slice(0, 8)} on KeeperHub`);
 

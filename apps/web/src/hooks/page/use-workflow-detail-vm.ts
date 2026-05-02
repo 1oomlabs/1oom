@@ -115,19 +115,31 @@ export function useWorkflowDetailVM(): WorkflowDetailVM {
     : undefined;
 
   const runM = useRunWorkflow({
+    onMutate: () => {
+      toast.info('Running workflow…', 'Triggering KeeperHub execution');
+    },
     onSuccess: ({ execution }) =>
       toast.success('Run triggered', `Execution ${execution.executionId}`),
     onError: (e) => toast.error('Run failed', e.message),
   });
   const pauseM = usePauseWorkflow({
+    onMutate: () => {
+      toast.info('Pausing workflow…');
+    },
     onSuccess: () => toast.info('Workflow paused'),
     onError: (e) => toast.error('Pause failed', e.message),
   });
   const resumeM = useResumeWorkflow({
+    onMutate: () => {
+      toast.info('Resuming workflow…');
+    },
     onSuccess: () => toast.success('Workflow resumed'),
     onError: (e) => toast.error('Resume failed', e.message),
   });
   const forkM = useForkWorkflow({
+    onMutate: () => {
+      toast.info('Forking workflow…', 'Cloning + redeploying to KeeperHub');
+    },
     onSuccess: (forked) => toast.success('Forked', `New id: ${forked.id.slice(0, 8)}`),
     onError: (e) => toast.error('Fork failed', e.message),
   });
