@@ -4,6 +4,7 @@ import { Suspense, lazy } from 'react';
 
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
+import { NotFoundView } from '@/components/shared/not-found';
 import { Toaster } from '@/components/ui/toaster';
 
 type RouterContext = {
@@ -12,6 +13,7 @@ type RouterContext = {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootComponent,
+  notFoundComponent: NotFoundView,
 });
 
 const TanStackRouterDevtools = import.meta.env.DEV
