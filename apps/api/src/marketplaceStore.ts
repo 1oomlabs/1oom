@@ -77,6 +77,27 @@ export const marketplaceStore = {
     return toListing(updated);
   },
 
+  // workflow.id로 매칭되는 listing(들)의 stats.runs를 1씩 증가.
+  // 같은 워크플로우가 여러 listing에 임베드된 경우 모두 갱신 (실무상 1:1 이지만 정합성 위해 다중 처리).
+  async incrementRunsByWorkflowId(workflowId: string): Promise<number> {
+    const matches = await prisma.marketplaceListing.findMany({
+      where: { workflow: { path: ['id'], equals: workflowId } },
+    });
+    if (matches.length === 0) return 0;
+    let bumped = 0;
+    for (const row of matches) {
+      const current = row.stats as MarketplaceListing['stats'];
+      await prisma.marketplaceListing.update({
+        where: { id: row.id },
+        data: {
+          stats: { ...current, runs: current.runs + 1 } as Prisma.InputJsonValue,
+        },
+      });
+      bumped += 1;
+    }
+    return bumped;
+  },
+
   async confirmOnchain(
     id: string,
     patch: { registryListingId?: number; confirmedAt?: number },
