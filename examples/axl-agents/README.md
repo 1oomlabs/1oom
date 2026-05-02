@@ -22,6 +22,27 @@ two independent AXL nodes; the AXL mesh routes messages between them.
 
 ## Prerequisites
 
+You need three things on the host: Go 1.25.5+, OpenSSL with ed25519
+support (Homebrew `openssl@3` on macOS — system LibreSSL will not work),
+and the AXL binary built from `gensyn-ai/axl` plus a pair of node
+configs.
+
+### Quick setup (recommended)
+
+Run the bundled script — idempotent, safe to re-run:
+
+```bash
+bash examples/axl-agents/setup.sh
+```
+
+It clones `gensyn-ai/axl`, builds `node`, creates ed25519 keys, and writes
+the two `node-config.json` files under `~/Develop/axl-runtime/` (override
+with `LOOM_AXL_RUNTIME_ROOT=/some/path`). When the script finishes it
+prints the exact commands to start the two nodes and capture their peer
+ids.
+
+### Manual setup (if you want to understand what the script does)
+
 1. Build the AXL node binary from
    [`gensyn-ai/axl`](https://github.com/gensyn-ai/axl):
 
@@ -43,9 +64,9 @@ two independent AXL nodes; the AXL mesh routes messages between them.
    real OpenSSL via Homebrew (`brew install openssl@3`) and use the path
    above. Linux builds work with the default `openssl`.
 
-3. Two `node-config.json` files. Note that both nodes share the gVisor
-   `tcp_port` value (different IPv6 mesh addresses isolate them) — using
-   different ports makes inter-node TCP fail with `connection refused`.
+3. Two `node-config.json` files. Both nodes share the gVisor `tcp_port`
+   value (different IPv6 mesh addresses isolate them) — using different
+   ports makes inter-node TCP fail with `connection refused`.
 
    `demo/node-a/node-config.json` (the listener):
    ```json
