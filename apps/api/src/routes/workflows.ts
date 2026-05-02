@@ -5,6 +5,7 @@ import { createWorkflowRequestSchema } from '@loomlabs/schema';
 
 import { getKeeperHubClient } from '@/keeperhub';
 import { log } from '@/log';
+import { marketplaceStore } from '@/marketplaceStore';
 import { compileWorkflow } from '@/services/compile';
 import { executionStore, workflowStore } from '@/store';
 import { zValidator } from '@/validate';
@@ -86,6 +87,15 @@ workflowsRouter.post('/:id/run', async (c) => {
     id: workflow.id,
     runCount: recorded?.workflow.runCount,
   });
+
+  // marketplace listing의 stats.runs도 동기화 — detail의 runCount와 카드 표시값이 어긋나지 않게
+  const bumpedListings = await marketplaceStore.incrementRunsByWorkflowId(workflow.id);
+  if (bumpedListings > 0) {
+    log('marketplace', 'listing runs bumped', {
+      workflowId: workflow.id,
+      listings: bumpedListings,
+    });
+  }
 
   return c.json({ workflow: recorded?.workflow ?? workflow, execution });
 });

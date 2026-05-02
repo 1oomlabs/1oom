@@ -18,6 +18,7 @@ import {
   useResourceMutation,
 } from '../hooks';
 import { type ListParams, Resource } from '../resource';
+import { marketplaceKeys } from './marketplace';
 
 export type { Workflow, CreateWorkflowRequest, Execution, WorkflowStatus };
 
@@ -122,6 +123,7 @@ export function useRunWorkflow(
       workflowKeys.action('executions', id),
       workflowKeys.action('status', id),
       workflowKeys.all(),
+      marketplaceKeys.all(),
     ],
     options,
   });
